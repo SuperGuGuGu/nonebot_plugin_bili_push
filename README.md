@@ -4,7 +4,7 @@ B 订阅推送插件
 
 仅支持 OB11 适配器
 
-(kook 适配器请前往另一个仓库查看，但不建议使用-[bili_push for kook](https://github.com/SuperGuGuGu/nonebot_plugin_bili_push_kook))
+(kook 适配器请前往另一个仓库查看-[bili_push for kook](https://github.com/SuperGuGuGu/nonebot_plugin_bili_push_kook))
 
 ## 示例
 
