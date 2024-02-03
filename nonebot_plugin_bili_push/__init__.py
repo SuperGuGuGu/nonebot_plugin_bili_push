@@ -20,7 +20,7 @@ import toml
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 
-plugin_version = "1.1.14"
+plugin_version = "1.1.15"
 
 def connect_api(type: str, url: str, post_json=None, file_path: str = None):
     h = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -379,20 +379,21 @@ def draw_text(texts: str,
             if use_api is True:
                 url = apiurl + "/api/emoji?imageid=" + emoji
                 try:
-                    return_image = requests.get(url)
-                    return_image = Image.open(BytesIO(return_image.content))
+                    return_image = connect_api("image", url)
                     return_image.save(cachepath)
                 except Exception as e:
                     logger.info("api出错，请联系开发者")
                     # api出错时直接打印文字
                     return_image = Image.new("RGBA", (100, 100), color=(0, 0, 0, 0))
-                    paste_image = draw_text(emoji, 100, 10)
-                    return_image.paste(paste_image, (0, 0), mask=paste_image)
+                    draw = ImageDraw.Draw(return_image)
+                    draw.text((0, 0), emoji, fill="#000000", font=font)
+                    return_image.paste(return_image, (0, 0), mask=return_image)
             else:
                 # 不使用api，直接打印文字
                 return_image = Image.new("RGBA", (100, 100), color=(0, 0, 0, 0))
-                paste_image = draw_text(emoji, 100, 10)
-                return_image.paste(paste_image, (0, 0), mask=paste_image)
+                draw = ImageDraw.Draw(return_image)
+                draw.text((0, 0), emoji, fill="#000000", font=font)
+                return_image.paste(return_image, (0, 0), mask=return_image)
         else:
             return_image = Image.open(cachepath, mode="r")
         return return_image
@@ -509,7 +510,11 @@ def draw_text(texts: str,
                         emoji_name = biliemoji_info["emoji_name"]
                         if emoji_name == biliemoji_name:
                             emoji_url = biliemoji_info["url"]
-                            paste_image = connect_api("image", emoji_url)
+                            try:
+                                paste_image = connect_api("image", emoji_url)
+                            except Exception as e:
+                                paste_image = draw_text("获取图片出错", 50, 10)
+                                logger.error(f"获取图片出错:{e}")
                             paste_image = paste_image.resize((int(fortsize * 1.2), int(fortsize * 1.2)))
                             image.paste(paste_image, (int(print_x), int(print_y)))
                             print_x += fortsize
