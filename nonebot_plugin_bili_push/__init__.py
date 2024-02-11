@@ -2685,6 +2685,9 @@ async def run_bili_push():
                             if json_data["code"] != 0:
                                 logger.error("bapi连接出错")
                                 return_data = {"user_profile": {"info": {"uname": "name", "face": "None"}}}
+                            elif json_data["data"]["has_more"] == 0:
+                                logger.debug("up未发动态")
+                                return_data = {"user_profile": {"info": {"uname": "name", "face": "None"}}}
                             else:
                                 return_data = json_data["data"]["cards"][0]["desc"]
 
