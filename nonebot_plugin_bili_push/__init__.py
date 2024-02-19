@@ -1625,6 +1625,7 @@ def get_draw(data, only_info: bool = False):
         elif bilitype == 2:
             card_message = bilidata["item"]["description"]
             card_images = bilidata["item"]["pictures"]
+            at_infos = bilidata["item"]["at_control"] if "at_control" in bilidata["item"] else None
             images = []
             for card_image in card_images:
                 image_url = card_image["img_src"]
@@ -1709,7 +1710,8 @@ def get_draw(data, only_info: bool = False):
                 paste_image = draw_text(card_message,
                                         size=30,
                                         textlen=24,
-                                        bili_emoji_infos=emoji_infos)
+                                        bili_emoji_infos=emoji_infos,
+                                        bili_at_infos=at_infos)
                 draw_image.paste(paste_image, (x, y), mask=paste_image)
                 w, h = paste_image.size
 
@@ -1761,6 +1763,7 @@ def get_draw(data, only_info: bool = False):
         # 文字动态
         elif bilitype == 4:
             card_message = bilidata["item"]["content"]
+            at_infos = bilidata["item"]["ctrl"] if "ctrl" in bilidata["item"] else None
             try:
                 emoji_infos = data["display"]["emoji_info"]["emoji_details"]
             except Exception as e:
@@ -1804,7 +1807,8 @@ def get_draw(data, only_info: bool = False):
                 paste_image = draw_text(card_message,
                                         size=30,
                                         textlen=24,
-                                        bili_emoji_infos=emoji_infos)
+                                        bili_emoji_infos=emoji_infos,
+                                        bili_at_infos=at_infos)
                 draw_image.paste(paste_image, (x, y), mask=paste_image)
 
                 returnpath = cachepath + 'bili动态/'
@@ -1858,8 +1862,7 @@ def get_draw(data, only_info: bool = False):
                 paste_image = draw_text(card_message,
                                         size=30,
                                         textlen=24,
-                                        bili_emoji_infos=emoji_infos,
-                                        calculate=False)
+                                        bili_emoji_infos=emoji_infos)
                 draw_image.paste(paste_image, (75, 230), mask=paste_image)
                 w, h = paste_image.size
                 y = 240 + h + 20
