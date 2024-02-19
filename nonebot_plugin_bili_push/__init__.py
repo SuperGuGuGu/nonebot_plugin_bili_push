@@ -20,7 +20,7 @@ import toml
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 
-plugin_version = "1.1.15"
+plugin_version = "1.1.17"
 
 def connect_api(type: str, url: str, post_json=None, file_path: str = None):
     h = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -335,7 +335,8 @@ def draw_text(texts: str,
               textlen: int = 20,
               fontfile: str = "",
               text_color="#000000",
-              biliemoji_infos=None,
+              bili_emoji_infos=None,
+              bili_at_infos=None,
               draw_qqemoji=False,
               calculate=False
               ):
@@ -347,12 +348,18 @@ def draw_text(texts: str,
     :param textlen: 一行的文字数量
     :param fontfile: 字体文字
     :param text_color: 字体颜色，例："#FFFFFF"、(10, 10, 10)
-    :param biliemoji_infos: 识别emoji
+    :param bili_emoji_infos: bili的表情
+    :param bili_at_infos: bili的at文字信息，显示蓝色
     :param draw_qqemoji: 识别qqemoji
     :param calculate: 计算长度。True时只返回空白图，不用粘贴文字，加快速度。
 
     :return: 图片文件（RGBA）
     """
+
+    if bili_at_infos is None:
+        bili_at_infos = []
+    else:
+        bili_at_infos = json.loads(bili_at_infos)
 
     def get_font_render_w(text):
         if text == " ":
@@ -401,20 +408,19 @@ def draw_text(texts: str,
     def is_emoji(emoji):
         if use_api is not True:
             return False
-        else:
-            try:
-                conn = sqlite3.connect(get_file_path("emoji_1.db"))
-                cursor = conn.cursor()
-                cursor.execute('select * from emoji where emoji = "' + emoji + '"')
-                data = cursor.fetchone()
-                cursor.close()
-                conn.close()
-                if data is not None:
-                    return True
-                else:
-                    return False
-            except Exception as e:
+        try:
+            conn = sqlite3.connect(get_file_path("emoji_1.db"))
+            cursor = conn.cursor()
+            cursor.execute('select * from emoji where emoji = "' + emoji + '"')
+            data = cursor.fetchone()
+            cursor.close()
+            conn.close()
+            if data is not None:
+                return True
+            else:
                 return False
+        except Exception as e:
+            return False
 
     fortsize = size
     if use_api is True:
@@ -440,7 +446,7 @@ def draw_text(texts: str,
                 if text == "\n":
                     continue
             biliemoji_name = None
-            if biliemoji_infos is not None:
+            if bili_emoji_infos is not None:
                 # 检测biliemoji
                 if text == "[":
                     emoji_len = 0
@@ -455,7 +461,7 @@ def draw_text(texts: str,
                             jump_num = emoji_len
                             emoji_len = 60
             if biliemoji_name is not None:
-                for biliemoji_info in biliemoji_infos:
+                for biliemoji_info in bili_emoji_infos:
                     emoji_name = biliemoji_info["emoji_name"]
                     if emoji_name == biliemoji_name:
                         print_x += fortsize
@@ -491,7 +497,7 @@ def draw_text(texts: str,
                     if text == "\n":
                         continue
                 biliemoji_name = None
-                if biliemoji_infos is not None:
+                if bili_emoji_infos is not None:
                     # 检测biliemoji
                     if text == "[":
                         emoji_len = 0
@@ -506,7 +512,7 @@ def draw_text(texts: str,
                                 jump_num = emoji_len
                                 emoji_len = 60
                 if biliemoji_name is not None:
-                    for biliemoji_info in biliemoji_infos:
+                    for biliemoji_info in bili_emoji_infos:
                         emoji_name = biliemoji_info["emoji_name"]
                         if emoji_name == biliemoji_name:
                             emoji_url = biliemoji_info["url"]
@@ -528,9 +534,15 @@ def draw_text(texts: str,
                         if text == " ":
                             print_x += get_font_render_w(text) + 2
                     else:
+                        draw_at = False
+                        for bili_at_info in bili_at_infos:
+                            if bili_at_info["location"] <= text_num < (
+                                    bili_at_info["location"] + bili_at_info["length"]):
+                                draw_at = True
+                                break
                         draw_image.text(xy=(int(print_x), int(print_y)),
                                         text=text,
-                                        fill=text_color,
+                                        fill=text_color if draw_at is False else "#00aeec",
                                         font=font)
                         print_x += get_font_render_w(text) + 2
         # 把输出的图片裁剪为只有内容的部分
@@ -708,7 +720,7 @@ def get_draw(data, only_info: bool = False):
         # 初始化文字版动态
         message_title = ""
         message_body = ""
-        message_url = "t.bilibili.com/" + dynamicid
+        message_url = f"t.bilibili.com/{dynamicid}"
         message_images = []
 
         # 绘制基础信息
@@ -776,6 +788,14 @@ def get_draw(data, only_info: bool = False):
                 paste_image = paste_image.resize((175, 175))
                 image.paste(paste_image, (46, 51), mask=paste_image)
 
+            # 添加大会员标志
+            if vipStatus:
+                file_path = get_file_path("bili-vip-icon.png")
+                paste_image = Image.open(file_path)
+                paste_image = paste_image.resize((50, 50))
+                imageround = imageround.resize((50, 50))
+                image.paste(paste_image, (150, 150), mask=imageround)
+
             # 添加动态卡片
             if "decorate_card" in list(data["desc"]["user_profile"]):
                 paste_image = draw_decorate_card()
@@ -838,6 +858,7 @@ def get_draw(data, only_info: bool = False):
         elif bilitype == 1:
             card_message = bilidata["item"]["content"]
             origin_type = bilidata["item"]["orig_type"]
+            at_infos = bilidata["item"]["ctrl"] if "ctrl" in bilidata["item"] else None
             try:
                 origin_emoji_infos = data["display"]["origin"]["emoji_info"]["emoji_details"]
             except Exception as e:
@@ -871,7 +892,7 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(card_message,
                                             size=30,
                                             textlen=24,
-                                            biliemoji_infos=emoji_infos,
+                                            bili_emoji_infos=emoji_infos,
                                             calculate=True)
                     w, h = paste_image.size
                     image_y += h
@@ -897,7 +918,8 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(card_message,
                                             size=30,
                                             textlen=24,
-                                            biliemoji_infos=emoji_infos)
+                                            bili_emoji_infos=emoji_infos,
+                                            bili_at_infos=at_infos)
                     draw_image.paste(paste_image, (x, y), mask=paste_image)
                     w, h = paste_image.size
                     y += h + 20
@@ -952,7 +974,7 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(origin_title,
                                             size=27,
                                             textlen=12,
-                                            biliemoji_infos=emoji_infos)
+                                            bili_emoji_infos=emoji_infos)
                     draw_image.paste(paste_image, (x + 2, y + 2), mask=paste_image)
 
                     # 添加视频简介
@@ -962,7 +984,7 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(origin_message,
                                             size=25,
                                             textlen=13,
-                                            biliemoji_infos=emoji_infos,
+                                            bili_emoji_infos=emoji_infos,
                                             text_color="#606060")
                     draw_image.paste(paste_image, (x + 2, y + 2), mask=paste_image)
 
@@ -1014,7 +1036,7 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(card_message,
                                             size=30,
                                             textlen=24,
-                                            biliemoji_infos=emoji_infos,
+                                            bili_emoji_infos=emoji_infos,
                                             calculate=True)
                     w, h = paste_image.size
                     image_y += h
@@ -1024,7 +1046,7 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(origin_message,
                                             size=27,
                                             textlen=24,
-                                            biliemoji_infos=emoji_infos,
+                                            bili_emoji_infos=emoji_infos,
                                             calculate=True)
                     w, h = paste_image.size
                     origin_len_y += h
@@ -1087,7 +1109,8 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(card_message,
                                             size=30,
                                             textlen=24,
-                                            biliemoji_infos=emoji_infos)
+                                            bili_emoji_infos=emoji_infos,
+                                            bili_at_infos=at_infos)
                     draw_image.paste(paste_image, (x, y), mask=paste_image)
                     w, h = paste_image.size
                     y += h + 20
@@ -1127,7 +1150,7 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(origin_message,
                                             size=28,
                                             textlen=22,
-                                            biliemoji_infos=emoji_infos)
+                                            bili_emoji_infos=emoji_infos)
                     draw_image.paste(paste_image, (x, y), mask=paste_image)
                     w, h = paste_image.size
                     x -= 10
@@ -1205,7 +1228,7 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(card_message,
                                             size=30,
                                             textlen=24,
-                                            biliemoji_infos=emoji_infos,
+                                            bili_emoji_infos=emoji_infos,
                                             calculate=True)
                     w, h = paste_image.size
                     image_y += h
@@ -1215,7 +1238,7 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(origin_message,
                                             size=27,
                                             textlen=24,
-                                            biliemoji_infos=emoji_infos,
+                                            bili_emoji_infos=emoji_infos,
                                             calculate=True)
                     w, h = paste_image.size
                     origin_len_y += h
@@ -1236,7 +1259,8 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(card_message,
                                             size=30,
                                             textlen=24,
-                                            biliemoji_infos=emoji_infos)
+                                            bili_emoji_infos=emoji_infos,
+                                            bili_at_infos=at_infos)
                     draw_image.paste(paste_image, (x, y), mask=paste_image)
                     w, h = paste_image.size
 
@@ -1277,7 +1301,7 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(origin_message,
                                             size=28,
                                             textlen=24,
-                                            biliemoji_infos=emoji_infos)
+                                            bili_emoji_infos=emoji_infos)
                     draw_image.paste(paste_image, (x, y), mask=paste_image)
 
                     returnpath = cachepath + 'bili动态/'
@@ -1315,7 +1339,7 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(card_message,
                                             size=30,
                                             textlen=24,
-                                            biliemoji_infos=emoji_infos,
+                                            bili_emoji_infos=emoji_infos,
                                             calculate=True)
                     w, h = paste_image.size
                     image_y += h
@@ -1341,7 +1365,8 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(card_message,
                                             size=30,
                                             textlen=24,
-                                            biliemoji_infos=emoji_infos)
+                                            bili_emoji_infos=emoji_infos,
+                                            bili_at_infos=at_infos)
                     draw_image.paste(paste_image, (x, y), mask=paste_image)
                     w, h = paste_image.size
                     y += h + 20
@@ -1396,7 +1421,7 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(origin_title,
                                             size=35,
                                             textlen=24,
-                                            biliemoji_infos=emoji_infos)
+                                            bili_emoji_infos=emoji_infos)
                     draw_image.paste(paste_image, (x, y), mask=paste_image)
 
                     # 添加文章简介
@@ -1406,7 +1431,7 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(origin_message,
                                             size=27,
                                             textlen=23,
-                                            biliemoji_infos=emoji_infos)
+                                            bili_emoji_infos=emoji_infos)
                     draw_image.paste(paste_image, (x, y), mask=paste_image)
 
                     returnpath = cachepath + 'bili动态/'
@@ -1435,7 +1460,7 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(card_message,
                                             size=30,
                                             textlen=24,
-                                            biliemoji_infos=emoji_infos,
+                                            bili_emoji_infos=emoji_infos,
                                             calculate=True)
                     w, h = paste_image.size
                     image_y += h
@@ -1445,7 +1470,7 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(origin_message,
                                             size=27,
                                             textlen=24,
-                                            biliemoji_infos=emoji_infos,
+                                            bili_emoji_infos=emoji_infos,
                                             calculate=True)
                     w, h = paste_image.size
                     origin_len_y += h
@@ -1466,7 +1491,8 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(card_message,
                                             size=30,
                                             textlen=24,
-                                            biliemoji_infos=emoji_infos)
+                                            bili_emoji_infos=emoji_infos,
+                                            bili_at_infos=at_infos)
                     draw_image.paste(paste_image, (x, y), mask=paste_image)
                     w, h = paste_image.size
 
@@ -1489,7 +1515,7 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(origin_message,
                                             size=28,
                                             textlen=24,
-                                            biliemoji_infos=emoji_infos)
+                                            bili_emoji_infos=emoji_infos)
                     draw_image.paste(paste_image, (x, y), mask=paste_image)
 
                     returnpath = cachepath + 'bili动态/'
@@ -1523,7 +1549,7 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(card_message,
                                             size=30,
                                             textlen=24,
-                                            biliemoji_infos=emoji_infos,
+                                            bili_emoji_infos=emoji_infos,
                                             calculate=True)
                     w, h = paste_image.size
                     image_y += h
@@ -1533,7 +1559,7 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(origin_title,
                                             size=27,
                                             textlen=24,
-                                            biliemoji_infos=emoji_infos,
+                                            bili_emoji_infos=emoji_infos,
                                             calculate=True)
                     w, h = paste_image.size
                     origin_len_y += h
@@ -1554,7 +1580,8 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(card_message,
                                             size=30,
                                             textlen=24,
-                                            biliemoji_infos=emoji_infos)
+                                            bili_emoji_infos=emoji_infos,
+                                            bili_at_infos=at_infos)
                     draw_image.paste(paste_image, (x, y), mask=paste_image)
                     w, h = paste_image.size
 
@@ -1583,7 +1610,7 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(origin_title,
                                             size=28,
                                             textlen=24,
-                                            biliemoji_infos=emoji_infos)
+                                            bili_emoji_infos=emoji_infos)
                     draw_image.paste(paste_image, (x, y), mask=paste_image)
 
                     returnpath = cachepath + 'bili动态/'
@@ -1623,7 +1650,7 @@ def get_draw(data, only_info: bool = False):
                 paste_image = draw_text(card_message,
                                         size=30,
                                         textlen=24,
-                                        biliemoji_infos=emoji_infos,
+                                        bili_emoji_infos=emoji_infos,
                                         calculate=True)
                 w, h = paste_image.size
                 image_y += h
@@ -1682,7 +1709,7 @@ def get_draw(data, only_info: bool = False):
                 paste_image = draw_text(card_message,
                                         size=30,
                                         textlen=24,
-                                        biliemoji_infos=emoji_infos)
+                                        bili_emoji_infos=emoji_infos)
                 draw_image.paste(paste_image, (x, y), mask=paste_image)
                 w, h = paste_image.size
 
@@ -1757,7 +1784,7 @@ def get_draw(data, only_info: bool = False):
                 paste_image = draw_text(card_message,
                                         size=30,
                                         textlen=24,
-                                        biliemoji_infos=emoji_infos,
+                                        bili_emoji_infos=emoji_infos,
                                         calculate=True)
                 w, h = paste_image.size
                 image_y += h
@@ -1777,7 +1804,7 @@ def get_draw(data, only_info: bool = False):
                 paste_image = draw_text(card_message,
                                         size=30,
                                         textlen=24,
-                                        biliemoji_infos=emoji_infos)
+                                        bili_emoji_infos=emoji_infos)
                 draw_image.paste(paste_image, (x, y), mask=paste_image)
 
                 returnpath = cachepath + 'bili动态/'
@@ -1814,7 +1841,7 @@ def get_draw(data, only_info: bool = False):
                 paste_image = draw_text(card_message,
                                         size=30,
                                         textlen=24,
-                                        biliemoji_infos=emoji_infos,
+                                        bili_emoji_infos=emoji_infos,
                                         calculate=True)
                 w, h = paste_image.size
                 image_y += h
@@ -1831,7 +1858,7 @@ def get_draw(data, only_info: bool = False):
                 paste_image = draw_text(card_message,
                                         size=30,
                                         textlen=24,
-                                        biliemoji_infos=emoji_infos,
+                                        bili_emoji_infos=emoji_infos,
                                         calculate=False)
                 draw_image.paste(paste_image, (75, 230), mask=paste_image)
                 w, h = paste_image.size
@@ -1860,7 +1887,7 @@ def get_draw(data, only_info: bool = False):
                 paste_image = draw_text(card_title,
                                         size=27,
                                         textlen=16,
-                                        biliemoji_infos=emoji_infos,
+                                        bili_emoji_infos=emoji_infos,
                                         calculate=False)
                 draw_image.paste(paste_image, (x, y), mask=paste_image)
                 w, h = paste_image.size
@@ -1874,7 +1901,7 @@ def get_draw(data, only_info: bool = False):
                                         size=25,
                                         textlen=17,
                                         text_color="#646464",
-                                        biliemoji_infos=emoji_infos,
+                                        bili_emoji_infos=emoji_infos,
                                         calculate=False)
                 draw_image.paste(paste_image, (x, y), mask=paste_image)
                 w, h = paste_image.size
@@ -1942,7 +1969,7 @@ def get_draw(data, only_info: bool = False):
                     texts=card_title,
                     size=27,
                     textlen=28,
-                    biliemoji_infos=emoji_infos
+                    bili_emoji_infos=emoji_infos
                 )
                 draw_image.paste(paste_image, (x, y), mask=paste_image)
 
@@ -1955,7 +1982,7 @@ def get_draw(data, only_info: bool = False):
                     size=27,
                     textlen=28,
                     text_color="#606060",
-                    biliemoji_infos=emoji_infos
+                    bili_emoji_infos=emoji_infos
                 )
                 draw_image.paste(paste_image, (x, y), mask=paste_image)
 
@@ -1986,7 +2013,7 @@ def get_draw(data, only_info: bool = False):
                 paste_image = draw_text("暂不支持的动态类型",
                                         size=30,
                                         textlen=24,
-                                        biliemoji_infos=emoji_infos,
+                                        bili_emoji_infos=emoji_infos,
                                         calculate=True)
                 w, h = paste_image.size
                 image_y += h
@@ -2005,7 +2032,7 @@ def get_draw(data, only_info: bool = False):
                 paste_image = draw_text("[不支持动态类型]",
                                         size=30,
                                         textlen=24,
-                                        biliemoji_infos=emoji_infos)
+                                        bili_emoji_infos=emoji_infos)
                 draw_image.paste(paste_image, (x, y), mask=paste_image)
 
                 returnpath = cachepath + 'bili动态/'
