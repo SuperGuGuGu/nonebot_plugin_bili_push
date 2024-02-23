@@ -20,7 +20,7 @@ import toml
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 
-plugin_version = "1.1.15"
+plugin_version = "1.1.18"
 
 def connect_api(type: str, url: str, post_json=None, file_path: str = None):
     h = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -45,7 +45,7 @@ def connect_api(type: str, url: str, post_json=None, file_path: str = None):
             # 这里不能用httpx。用就报错。
             with open(cache_file_path, "wb") as f, requests.get(url, headers=h) as res:
                 f.write(res.content)
-            logger.info("下载完成")
+            logger.debug(f"下载完成{file_path}")
             shutil.copyfile(cache_file_path, file_path)
             os.remove(cache_file_path)
         except Exception as e:
@@ -231,7 +231,7 @@ def plugin_config(config_name: str, groupcode: str):
                       {"nonebot_plugin_bili_push": "https://github.com/SuperGuGuGu/nonebot_plugin_bili_push"}
                   }
         save_config()
-        logger.info("未存在群配置文件，正在创建")
+        logger.debug("未存在群配置文件，正在创建")
 
     # 读取配置
     config = toml.load(path)
@@ -316,7 +316,7 @@ def get_file_path(file_name):
     file_path += file_name
     if not os.path.exists(file_path):
         # 如果文件未缓存，则缓存下来
-        logger.info("正在下载" + file_name)
+        logger.debug("正在下载" + file_name)
         if use_api is True:
             url = apiurl + "/file/" + file_name
         else:
@@ -335,7 +335,8 @@ def draw_text(texts: str,
               textlen: int = 20,
               fontfile: str = "",
               text_color="#000000",
-              biliemoji_infos=None,
+              bili_emoji_infos=None,
+              bili_at_infos=None,
               draw_qqemoji=False,
               calculate=False
               ):
@@ -347,12 +348,18 @@ def draw_text(texts: str,
     :param textlen: 一行的文字数量
     :param fontfile: 字体文字
     :param text_color: 字体颜色，例："#FFFFFF"、(10, 10, 10)
-    :param biliemoji_infos: 识别emoji
+    :param bili_emoji_infos: bili的表情
+    :param bili_at_infos: bili的at文字信息，显示蓝色
     :param draw_qqemoji: 识别qqemoji
     :param calculate: 计算长度。True时只返回空白图，不用粘贴文字，加快速度。
 
     :return: 图片文件（RGBA）
     """
+
+    if bili_at_infos is None:
+        bili_at_infos = []
+    else:
+        bili_at_infos = json.loads(bili_at_infos)
 
     def get_font_render_w(text):
         if text == " ":
@@ -382,7 +389,7 @@ def draw_text(texts: str,
                     return_image = connect_api("image", url)
                     return_image.save(cachepath)
                 except Exception as e:
-                    logger.info("api出错，请联系开发者")
+                    logger.warning("api出错，请联系开发者")
                     # api出错时直接打印文字
                     return_image = Image.new("RGBA", (100, 100), color=(0, 0, 0, 0))
                     draw = ImageDraw.Draw(return_image)
@@ -401,20 +408,19 @@ def draw_text(texts: str,
     def is_emoji(emoji):
         if use_api is not True:
             return False
-        else:
-            try:
-                conn = sqlite3.connect(get_file_path("emoji_1.db"))
-                cursor = conn.cursor()
-                cursor.execute('select * from emoji where emoji = "' + emoji + '"')
-                data = cursor.fetchone()
-                cursor.close()
-                conn.close()
-                if data is not None:
-                    return True
-                else:
-                    return False
-            except Exception as e:
+        try:
+            conn = sqlite3.connect(get_file_path("emoji_1.db"))
+            cursor = conn.cursor()
+            cursor.execute('select * from emoji where emoji = "' + emoji + '"')
+            data = cursor.fetchone()
+            cursor.close()
+            conn.close()
+            if data is not None:
+                return True
+            else:
                 return False
+        except Exception as e:
+            return False
 
     fortsize = size
     if use_api is True:
@@ -440,7 +446,7 @@ def draw_text(texts: str,
                 if text == "\n":
                     continue
             biliemoji_name = None
-            if biliemoji_infos is not None:
+            if bili_emoji_infos is not None:
                 # 检测biliemoji
                 if text == "[":
                     emoji_len = 0
@@ -455,7 +461,7 @@ def draw_text(texts: str,
                             jump_num = emoji_len
                             emoji_len = 60
             if biliemoji_name is not None:
-                for biliemoji_info in biliemoji_infos:
+                for biliemoji_info in bili_emoji_infos:
                     emoji_name = biliemoji_info["emoji_name"]
                     if emoji_name == biliemoji_name:
                         print_x += fortsize
@@ -491,7 +497,7 @@ def draw_text(texts: str,
                     if text == "\n":
                         continue
                 biliemoji_name = None
-                if biliemoji_infos is not None:
+                if bili_emoji_infos is not None:
                     # 检测biliemoji
                     if text == "[":
                         emoji_len = 0
@@ -506,7 +512,7 @@ def draw_text(texts: str,
                                 jump_num = emoji_len
                                 emoji_len = 60
                 if biliemoji_name is not None:
-                    for biliemoji_info in biliemoji_infos:
+                    for biliemoji_info in bili_emoji_infos:
                         emoji_name = biliemoji_info["emoji_name"]
                         if emoji_name == biliemoji_name:
                             emoji_url = biliemoji_info["url"]
@@ -528,9 +534,15 @@ def draw_text(texts: str,
                         if text == " ":
                             print_x += get_font_render_w(text) + 2
                     else:
+                        draw_at = False
+                        for bili_at_info in bili_at_infos:
+                            if bili_at_info["location"] <= text_num < (
+                                    bili_at_info["location"] + bili_at_info["length"]):
+                                draw_at = True
+                                break
                         draw_image.text(xy=(int(print_x), int(print_y)),
                                         text=text,
-                                        fill=text_color,
+                                        fill=text_color if draw_at is False else "#00aeec",
                                         font=font)
                         print_x += get_font_render_w(text) + 2
         # 把输出的图片裁剪为只有内容的部分
@@ -645,23 +657,23 @@ def get_draw(data, only_info: bool = False):
                 rey = h
                 rex = int(rey * x / y)
                 paste_image = image.resize((rex, rey))
-                logger.infox = int((w - rex) / 2)
-                image_background.paste(paste_image, (logger.infox, 0))
+                printx = int((w - rex) / 2)
+                image_background.paste(paste_image, (printx, 0))
         else:
             if w / h >= x / y:
                 rey = h
                 rex = int(rey * x / y)
                 paste_image = image.resize((rex, rey))
-                logger.infox = int((w - rex) / 2)
-                logger.infoy = 0
-                image_background.paste(paste_image, (logger.infox, logger.infoy))
+                printx = int((w - rex) / 2)
+                printy = 0
+                image_background.paste(paste_image, (printx, printy))
             else:
                 rex = w
                 rey = int(rex * y / x)
                 paste_image = image.resize((rex, rey))
-                logger.infox = 0
-                logger.infoy = int((h - rey) / 2)
-                image_background.paste(paste_image, (logger.infox, logger.infoy))
+                printx = 0
+                printy = int((h - rey) / 2)
+                image_background.paste(paste_image, (printx, printy))
 
         return image_background
 
@@ -679,7 +691,7 @@ def get_draw(data, only_info: bool = False):
     code = 0
     returnpath = ""
     dynamicid = str(data["desc"]["dynamic_id"])
-    logger.info(f"bili-push_draw_开始获取数据-{dynamicid}")
+    logger.debug(f"bili-push_draw_开始获取数据-{dynamicid}")
     uid = str(data["desc"]["uid"])
     biliname = str(data["desc"]["user_profile"]["info"]["uname"])
     biliface = str(data["desc"]["user_profile"]["info"]["face"])
@@ -708,7 +720,7 @@ def get_draw(data, only_info: bool = False):
         # 初始化文字版动态
         message_title = ""
         message_body = ""
-        message_url = "t.bilibili.com/" + dynamicid
+        message_url = f"t.bilibili.com/{dynamicid}"
         message_images = []
 
         # 绘制基础信息
@@ -776,6 +788,14 @@ def get_draw(data, only_info: bool = False):
                 paste_image = paste_image.resize((175, 175))
                 image.paste(paste_image, (46, 51), mask=paste_image)
 
+            # 添加大会员标志
+            if vipStatus:
+                file_path = get_file_path("bili-vip-icon.png")
+                paste_image = Image.open(file_path)
+                paste_image = paste_image.resize((50, 50))
+                imageround = imageround.resize((50, 50))
+                image.paste(paste_image, (150, 150), mask=imageround)
+
             # 添加动态卡片
             if "decorate_card" in list(data["desc"]["user_profile"]):
                 paste_image = draw_decorate_card()
@@ -831,13 +851,14 @@ def get_draw(data, only_info: bool = False):
                 os.makedirs(returnpath)
             returnpath = f"{returnpath}{date}_{timenow}_{random.randint(1000, 9999)}.png"
             draw_image.save(returnpath)
-            logger.info("bili-push_draw_绘图成功")
+            logger.debug("bili-push_draw_绘图成功")
             code = 2
 
         # 转发动态
         elif bilitype == 1:
             card_message = bilidata["item"]["content"]
             origin_type = bilidata["item"]["orig_type"]
+            at_infos = bilidata["item"]["ctrl"] if "ctrl" in bilidata["item"] else None
             try:
                 origin_emoji_infos = data["display"]["origin"]["emoji_info"]["emoji_details"]
             except Exception as e:
@@ -855,14 +876,14 @@ def get_draw(data, only_info: bool = False):
                 origin_title = origin_data["title"]
                 origin_message = origin_data["desc"]
                 origin_video_image = origin_data["pic"]
-                logger.info("bili-push_draw_18_开始拼接文字")
+                logger.debug("bili-push_draw_18_开始拼接文字")
                 if run:
                     message_title = biliname + "转发了视频"
                     message_body = card_message + "\n转发视频：\n" + origin_title + "\n" + origin_message
                     if len(message_body) > 80:
                         message_body = message_body[0:79] + "…"
                     message_images.append(origin_data["pic"])
-                logger.info("bili-push_draw_18_开始绘图")
+                logger.debug("bili-push_draw_18_开始绘图")
                 if run:
                     image_x = 900
                     image_y = 140  # add base y
@@ -871,7 +892,7 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(card_message,
                                             size=30,
                                             textlen=24,
-                                            biliemoji_infos=emoji_infos,
+                                            bili_emoji_infos=emoji_infos,
                                             calculate=True)
                     w, h = paste_image.size
                     image_y += h
@@ -897,7 +918,8 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(card_message,
                                             size=30,
                                             textlen=24,
-                                            biliemoji_infos=emoji_infos)
+                                            bili_emoji_infos=emoji_infos,
+                                            bili_at_infos=at_infos)
                     draw_image.paste(paste_image, (x, y), mask=paste_image)
                     w, h = paste_image.size
                     y += h + 20
@@ -952,7 +974,7 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(origin_title,
                                             size=27,
                                             textlen=12,
-                                            biliemoji_infos=emoji_infos)
+                                            bili_emoji_infos=emoji_infos)
                     draw_image.paste(paste_image, (x + 2, y + 2), mask=paste_image)
 
                     # 添加视频简介
@@ -962,7 +984,7 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(origin_message,
                                             size=25,
                                             textlen=13,
-                                            biliemoji_infos=emoji_infos,
+                                            bili_emoji_infos=emoji_infos,
                                             text_color="#606060")
                     draw_image.paste(paste_image, (x + 2, y + 2), mask=paste_image)
 
@@ -971,7 +993,7 @@ def get_draw(data, only_info: bool = False):
                         os.makedirs(returnpath)
                     returnpath = f"{returnpath}{date}_{timenow}_{random.randint(1000, 9999)}.png"
                     draw_image.save(returnpath)
-                    logger.info("bili-push_draw_绘图成功")
+                    logger.debug("bili-push_draw_绘图成功")
                     code = 2
 
             # 图文动态
@@ -993,7 +1015,7 @@ def get_draw(data, only_info: bool = False):
                     emoji_infos = data["display"]["emoji_info"]["emoji_details"]
                 except Exception as e:
                     emoji_infos = []
-                logger.info("bili-push_draw_12_开始拼接文字")
+                logger.debug("bili-push_draw_12_开始拼接文字")
                 if run:
                     message_title = biliname + "转发了动态"
                     message_body = card_message + "\n转发动态：\n" + origin_data["item"]["description"]
@@ -1002,7 +1024,7 @@ def get_draw(data, only_info: bool = False):
                     origin_images = origin_data["item"]["pictures"]
                     for origin_image in origin_images:
                         message_images.append(origin_image["img_src"])
-                logger.info("bili-push_draw_12_开始绘图")
+                logger.debug("bili-push_draw_12_开始绘图")
                 if run:
                     fortsize = 30
                     font = ImageFont.truetype(font=fontfile, size=fortsize)
@@ -1014,7 +1036,7 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(card_message,
                                             size=30,
                                             textlen=24,
-                                            biliemoji_infos=emoji_infos,
+                                            bili_emoji_infos=emoji_infos,
                                             calculate=True)
                     w, h = paste_image.size
                     image_y += h
@@ -1024,7 +1046,7 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(origin_message,
                                             size=27,
                                             textlen=24,
-                                            biliemoji_infos=emoji_infos,
+                                            bili_emoji_infos=emoji_infos,
                                             calculate=True)
                     w, h = paste_image.size
                     origin_len_y += h
@@ -1087,7 +1109,8 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(card_message,
                                             size=30,
                                             textlen=24,
-                                            biliemoji_infos=emoji_infos)
+                                            bili_emoji_infos=emoji_infos,
+                                            bili_at_infos=at_infos)
                     draw_image.paste(paste_image, (x, y), mask=paste_image)
                     w, h = paste_image.size
                     y += h + 20
@@ -1127,7 +1150,7 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(origin_message,
                                             size=28,
                                             textlen=22,
-                                            biliemoji_infos=emoji_infos)
+                                            bili_emoji_infos=emoji_infos)
                     draw_image.paste(paste_image, (x, y), mask=paste_image)
                     w, h = paste_image.size
                     x -= 10
@@ -1177,7 +1200,7 @@ def get_draw(data, only_info: bool = False):
                         os.makedirs(returnpath)
                     returnpath = f"{returnpath}{date}_{timenow}_{random.randint(1000, 9999)}.png"
                     draw_image.save(returnpath)
-                    logger.info("bili-push_draw_绘图成功")
+                    logger.debug("bili-push_draw_绘图成功")
                     code = 2
 
             # 文字动态
@@ -1190,13 +1213,13 @@ def get_draw(data, only_info: bool = False):
                 origin_timestamp = time.localtime(origin_timestamp)
                 origin_timestamp = time.strftime("%Y年%m月%d日 %H:%M:%S", origin_timestamp)
                 origin_message = origin_data["item"]["content"]
-                logger.info("bili-push_draw_14_开始拼接文字")
+                logger.debug("bili-push_draw_14_开始拼接文字")
                 if run:
                     message_title = biliname + "转发了动态"
                     message_body = card_message + "\n转发动态：\n" + origin_data["item"]["content"]
                     if len(message_body) > 80:
                         message_body = message_body[0:79] + "…"
-                logger.info("bili-push_draw_14_开始绘图")
+                logger.debug("bili-push_draw_14_开始绘图")
                 if run:
                     image_x = 900
                     image_y = 140  # add base y
@@ -1205,7 +1228,7 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(card_message,
                                             size=30,
                                             textlen=24,
-                                            biliemoji_infos=emoji_infos,
+                                            bili_emoji_infos=emoji_infos,
                                             calculate=True)
                     w, h = paste_image.size
                     image_y += h
@@ -1215,7 +1238,7 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(origin_message,
                                             size=27,
                                             textlen=24,
-                                            biliemoji_infos=emoji_infos,
+                                            bili_emoji_infos=emoji_infos,
                                             calculate=True)
                     w, h = paste_image.size
                     origin_len_y += h
@@ -1236,7 +1259,8 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(card_message,
                                             size=30,
                                             textlen=24,
-                                            biliemoji_infos=emoji_infos)
+                                            bili_emoji_infos=emoji_infos,
+                                            bili_at_infos=at_infos)
                     draw_image.paste(paste_image, (x, y), mask=paste_image)
                     w, h = paste_image.size
 
@@ -1277,7 +1301,7 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(origin_message,
                                             size=28,
                                             textlen=24,
-                                            biliemoji_infos=emoji_infos)
+                                            bili_emoji_infos=emoji_infos)
                     draw_image.paste(paste_image, (x, y), mask=paste_image)
 
                     returnpath = cachepath + 'bili动态/'
@@ -1285,7 +1309,7 @@ def get_draw(data, only_info: bool = False):
                         os.makedirs(returnpath)
                     returnpath = f"{returnpath}{date}_{timenow}_{random.randint(1000, 9999)}.png"
                     draw_image.save(returnpath)
-                    logger.info("bili-push_draw_绘图成功")
+                    logger.debug("bili-push_draw_绘图成功")
                     code = 2
 
             # 文章动态
@@ -1300,13 +1324,13 @@ def get_draw(data, only_info: bool = False):
                 origin_title = origin_data["title"]
                 origin_message = origin_data["summary"]
                 origin_image = origin_data["image_urls"][0]
-                logger.info("bili-push_开始拼接文字")
+                logger.debug("bili-push_开始拼接文字")
                 if run:
                     message_title = biliname + "转发了文章"
                     message_body = card_message + "\n转发文章：\n" + origin_data["title"] + "\n" + origin_message
                     if len(message_body) > 80:
                         message_body = message_body[0:79] + "…"
-                logger.info("bili-push_开始绘图")
+                logger.debug("bili-push_开始绘图")
                 if run:
                     image_x = 900
                     image_y = 140  # add base y
@@ -1315,7 +1339,7 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(card_message,
                                             size=30,
                                             textlen=24,
-                                            biliemoji_infos=emoji_infos,
+                                            bili_emoji_infos=emoji_infos,
                                             calculate=True)
                     w, h = paste_image.size
                     image_y += h
@@ -1341,7 +1365,8 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(card_message,
                                             size=30,
                                             textlen=24,
-                                            biliemoji_infos=emoji_infos)
+                                            bili_emoji_infos=emoji_infos,
+                                            bili_at_infos=at_infos)
                     draw_image.paste(paste_image, (x, y), mask=paste_image)
                     w, h = paste_image.size
                     y += h + 20
@@ -1396,7 +1421,7 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(origin_title,
                                             size=35,
                                             textlen=24,
-                                            biliemoji_infos=emoji_infos)
+                                            bili_emoji_infos=emoji_infos)
                     draw_image.paste(paste_image, (x, y), mask=paste_image)
 
                     # 添加文章简介
@@ -1406,7 +1431,7 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(origin_message,
                                             size=27,
                                             textlen=23,
-                                            biliemoji_infos=emoji_infos)
+                                            bili_emoji_infos=emoji_infos)
                     draw_image.paste(paste_image, (x, y), mask=paste_image)
 
                     returnpath = cachepath + 'bili动态/'
@@ -1414,19 +1439,19 @@ def get_draw(data, only_info: bool = False):
                         os.makedirs(returnpath)
                     returnpath = f"{returnpath}{date}_{timenow}_{random.randint(1000, 9999)}.png"
                     draw_image.save(returnpath)
-                    logger.info("bili-push_绘图成功")
+                    logger.debug("bili-push_绘图成功")
                     code = 2
 
             # 已下播的直播间动态
             elif origin_type == 1024:
                 origin_message = "直播已结束"
-                logger.info("bili-push_开始拼接文字")
+                logger.debug("bili-push_开始拼接文字")
                 if run:
                     message_title = biliname + "转发了直播"
                     message_body = card_message + "\n转发直播：\n" + origin_message
                     if len(message_body) > 80:
                         message_body = message_body[0:79] + "…"
-                logger.info("bili-push_开始绘图")
+                logger.debug("bili-push_开始绘图")
                 if run:
                     image_x = 900
                     image_y = 140  # add base y
@@ -1435,7 +1460,7 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(card_message,
                                             size=30,
                                             textlen=24,
-                                            biliemoji_infos=emoji_infos,
+                                            bili_emoji_infos=emoji_infos,
                                             calculate=True)
                     w, h = paste_image.size
                     image_y += h
@@ -1445,7 +1470,7 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(origin_message,
                                             size=27,
                                             textlen=24,
-                                            biliemoji_infos=emoji_infos,
+                                            bili_emoji_infos=emoji_infos,
                                             calculate=True)
                     w, h = paste_image.size
                     origin_len_y += h
@@ -1466,7 +1491,8 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(card_message,
                                             size=30,
                                             textlen=24,
-                                            biliemoji_infos=emoji_infos)
+                                            bili_emoji_infos=emoji_infos,
+                                            bili_at_infos=at_infos)
                     draw_image.paste(paste_image, (x, y), mask=paste_image)
                     w, h = paste_image.size
 
@@ -1489,7 +1515,7 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(origin_message,
                                             size=28,
                                             textlen=24,
-                                            biliemoji_infos=emoji_infos)
+                                            bili_emoji_infos=emoji_infos)
                     draw_image.paste(paste_image, (x, y), mask=paste_image)
 
                     returnpath = cachepath + 'bili动态/'
@@ -1497,7 +1523,7 @@ def get_draw(data, only_info: bool = False):
                         os.makedirs(returnpath)
                     returnpath = f"{returnpath}{date}_{timenow}_{random.randint(1000, 9999)}.png"
                     draw_image.save(returnpath)
-                    logger.info("bili-push_绘图成功")
+                    logger.debug("bili-push_绘图成功")
                     code = 2
 
             # 正在直播的直播间动态
@@ -1508,13 +1534,13 @@ def get_draw(data, only_info: bool = False):
                 origin_data = json.loads(origin_data)
                 origin_title = origin_data["live_play_info"]["title"]
                 origin_image = origin_data["live_play_info"]["cover"]
-                logger.info("bili-push_开始拼接文字")
+                logger.debug("bili-push_开始拼接文字")
                 if run:
                     message_title = biliname + "转发了直播"
                     message_body = card_message + "\n转发直播：\n" + origin_title
                     if len(message_body) > 80:
                         message_body = message_body[0:79] + "…"
-                logger.info("bili-push_开始绘图")
+                logger.debug("bili-push_开始绘图")
                 if run:
                     image_x = 900
                     image_y = 140  # add base y
@@ -1523,7 +1549,7 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(card_message,
                                             size=30,
                                             textlen=24,
-                                            biliemoji_infos=emoji_infos,
+                                            bili_emoji_infos=emoji_infos,
                                             calculate=True)
                     w, h = paste_image.size
                     image_y += h
@@ -1533,7 +1559,7 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(origin_title,
                                             size=27,
                                             textlen=24,
-                                            biliemoji_infos=emoji_infos,
+                                            bili_emoji_infos=emoji_infos,
                                             calculate=True)
                     w, h = paste_image.size
                     origin_len_y += h
@@ -1554,7 +1580,8 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(card_message,
                                             size=30,
                                             textlen=24,
-                                            biliemoji_infos=emoji_infos)
+                                            bili_emoji_infos=emoji_infos,
+                                            bili_at_infos=at_infos)
                     draw_image.paste(paste_image, (x, y), mask=paste_image)
                     w, h = paste_image.size
 
@@ -1583,7 +1610,7 @@ def get_draw(data, only_info: bool = False):
                     paste_image = draw_text(origin_title,
                                             size=28,
                                             textlen=24,
-                                            biliemoji_infos=emoji_infos)
+                                            bili_emoji_infos=emoji_infos)
                     draw_image.paste(paste_image, (x, y), mask=paste_image)
 
                     returnpath = cachepath + 'bili动态/'
@@ -1591,13 +1618,14 @@ def get_draw(data, only_info: bool = False):
                         os.makedirs(returnpath)
                     returnpath = f"{returnpath}{date}_{timenow}_{random.randint(1000, 9999)}.png"
                     draw_image.save(returnpath)
-                    logger.info("bili-push_绘图成功")
+                    logger.debug("bili-push_绘图成功")
                     code = 2
 
         # 图文动态
         elif bilitype == 2:
             card_message = bilidata["item"]["description"]
             card_images = bilidata["item"]["pictures"]
+            at_infos = bilidata["item"]["at_control"] if "at_control" in bilidata["item"] else None
             images = []
             for card_image in card_images:
                 image_url = card_image["img_src"]
@@ -1606,14 +1634,14 @@ def get_draw(data, only_info: bool = False):
                 emoji_infos = data["display"]["emoji_info"]["emoji_details"]
             except Exception as e:
                 emoji_infos = []
-            logger.info("bili-push_开始拼接文字")
+            logger.debug("bili-push_开始拼接文字")
             if run:
                 message_title = biliname + "发布了动态"
                 message_body = card_message
                 if len(message_body) > 80:
                     message_body = message_body[0:79] + "……"
                 message_images = images
-            logger.info("bili-push_开始绘图")
+            logger.debug("bili-push_开始绘图")
             if run:  # 代码折叠
                 # 计算图片长度
                 image_x = 900
@@ -1623,7 +1651,7 @@ def get_draw(data, only_info: bool = False):
                 paste_image = draw_text(card_message,
                                         size=30,
                                         textlen=24,
-                                        biliemoji_infos=emoji_infos,
+                                        bili_emoji_infos=emoji_infos,
                                         calculate=True)
                 w, h = paste_image.size
                 image_y += h
@@ -1682,7 +1710,8 @@ def get_draw(data, only_info: bool = False):
                 paste_image = draw_text(card_message,
                                         size=30,
                                         textlen=24,
-                                        biliemoji_infos=emoji_infos)
+                                        bili_emoji_infos=emoji_infos,
+                                        bili_at_infos=at_infos)
                 draw_image.paste(paste_image, (x, y), mask=paste_image)
                 w, h = paste_image.size
 
@@ -1728,25 +1757,25 @@ def get_draw(data, only_info: bool = False):
                     os.makedirs(returnpath)
                 returnpath = f"{returnpath}{date}_{timenow}_{random.randint(1000, 9999)}.png"
                 draw_image.save(returnpath)
-                logger.info("bili-push_draw_绘图成功")
+                logger.debug("bili-push_draw_绘图成功")
                 code = 2
 
         # 文字动态
         elif bilitype == 4:
             card_message = bilidata["item"]["content"]
+            at_infos = bilidata["item"]["ctrl"] if "ctrl" in bilidata["item"] else None
             try:
                 emoji_infos = data["display"]["emoji_info"]["emoji_details"]
             except Exception as e:
                 emoji_infos = []
-            logger.info("bili-push_开始拼接文字")
+            logger.debug("bili-push_开始拼接文字")
             if run:
                 message_title = biliname + "发布了动态"
                 message_body = card_message
                 if len(message_body) > 80:
                     message_body = message_body[0:79] + "……"
-            logger.info("bili-push_开始绘图")
+            logger.debug("bili-push_开始绘图")
             if run:
-                logger.info("bili-push_开始绘图")
                 fortsize = 30
                 font = ImageFont.truetype(font=fontfile, size=fortsize)
 
@@ -1757,7 +1786,7 @@ def get_draw(data, only_info: bool = False):
                 paste_image = draw_text(card_message,
                                         size=30,
                                         textlen=24,
-                                        biliemoji_infos=emoji_infos,
+                                        bili_emoji_infos=emoji_infos,
                                         calculate=True)
                 w, h = paste_image.size
                 image_y += h
@@ -1777,7 +1806,8 @@ def get_draw(data, only_info: bool = False):
                 paste_image = draw_text(card_message,
                                         size=30,
                                         textlen=24,
-                                        biliemoji_infos=emoji_infos)
+                                        bili_emoji_infos=emoji_infos,
+                                        bili_at_infos=at_infos)
                 draw_image.paste(paste_image, (x, y), mask=paste_image)
 
                 returnpath = cachepath + 'bili动态/'
@@ -1785,7 +1815,7 @@ def get_draw(data, only_info: bool = False):
                     os.makedirs(returnpath)
                 returnpath = f"{returnpath}{date}_{timenow}_{random.randint(1000, 9999)}.png"
                 draw_image.save(returnpath)
-                logger.info("bili-push_draw_绘图成功")
+                logger.debug("bili-push_draw_绘图成功")
                 code = 2
 
         # 投稿视频
@@ -1798,14 +1828,14 @@ def get_draw(data, only_info: bool = False):
                 emoji_infos = data["display"]["emoji_info"]["emoji_details"]
             except Exception as e:
                 emoji_infos = []
-            logger.info("bili-push_开始拼接文字")
+            logger.debug("bili-push_开始拼接文字")
             if run:
                 message_title = biliname + "投稿了视频"
                 message_body = card_message
                 if len(message_body) > 80:
                     message_body = message_body[0:79] + "……"
                 message_images = [card_image]
-            logger.info("bili-push_开始绘图")
+            logger.debug("bili-push_开始绘图")
             if run:
                 # 开始绘图
                 image_x = 900
@@ -1814,7 +1844,7 @@ def get_draw(data, only_info: bool = False):
                 paste_image = draw_text(card_message,
                                         size=30,
                                         textlen=24,
-                                        biliemoji_infos=emoji_infos,
+                                        bili_emoji_infos=emoji_infos,
                                         calculate=True)
                 w, h = paste_image.size
                 image_y += h
@@ -1831,8 +1861,7 @@ def get_draw(data, only_info: bool = False):
                 paste_image = draw_text(card_message,
                                         size=30,
                                         textlen=24,
-                                        biliemoji_infos=emoji_infos,
-                                        calculate=False)
+                                        bili_emoji_infos=emoji_infos)
                 draw_image.paste(paste_image, (75, 230), mask=paste_image)
                 w, h = paste_image.size
                 y = 240 + h + 20
@@ -1860,7 +1889,7 @@ def get_draw(data, only_info: bool = False):
                 paste_image = draw_text(card_title,
                                         size=27,
                                         textlen=16,
-                                        biliemoji_infos=emoji_infos,
+                                        bili_emoji_infos=emoji_infos,
                                         calculate=False)
                 draw_image.paste(paste_image, (x, y), mask=paste_image)
                 w, h = paste_image.size
@@ -1874,7 +1903,7 @@ def get_draw(data, only_info: bool = False):
                                         size=25,
                                         textlen=17,
                                         text_color="#646464",
-                                        biliemoji_infos=emoji_infos,
+                                        bili_emoji_infos=emoji_infos,
                                         calculate=False)
                 draw_image.paste(paste_image, (x, y), mask=paste_image)
                 w, h = paste_image.size
@@ -1884,7 +1913,7 @@ def get_draw(data, only_info: bool = False):
                     os.makedirs(returnpath)
                 returnpath = f"{returnpath}{date}_{timenow}_{random.randint(1000, 9999)}.png"
                 draw_image.save(returnpath)
-                logger.info("bili-push_draw_绘图成功")
+                logger.debug("bili-push_draw_绘图成功")
                 code = 2
 
         # 投稿文章
@@ -1896,14 +1925,14 @@ def get_draw(data, only_info: bool = False):
                 emoji_infos = data["display"]["emoji_info"]["emoji_details"]
             except Exception as e:
                 emoji_infos = []
-            logger.info("bili-push_开始拼接文字")
+            logger.debug("bili-push_开始拼接文字")
             if run:
                 message_title = biliname + "投稿了文章"
                 message_body = card_message
                 if len(message_body) > 80:
                     message_body = message_body[0:79] + "……"
                 message_images = [card_image]
-            logger.info("bili-push_开始绘图")
+            logger.debug("bili-push_开始绘图")
             if run:
                 # 开始绘图
                 image_x = 900
@@ -1942,7 +1971,7 @@ def get_draw(data, only_info: bool = False):
                     texts=card_title,
                     size=27,
                     textlen=28,
-                    biliemoji_infos=emoji_infos
+                    bili_emoji_infos=emoji_infos
                 )
                 draw_image.paste(paste_image, (x, y), mask=paste_image)
 
@@ -1955,7 +1984,7 @@ def get_draw(data, only_info: bool = False):
                     size=27,
                     textlen=28,
                     text_color="#606060",
-                    biliemoji_infos=emoji_infos
+                    bili_emoji_infos=emoji_infos
                 )
                 draw_image.paste(paste_image, (x, y), mask=paste_image)
 
@@ -1964,7 +1993,7 @@ def get_draw(data, only_info: bool = False):
                     os.makedirs(returnpath)
                 returnpath = f"{returnpath}{date}_{timenow}_{random.randint(1000, 9999)}.png"
                 draw_image.save(returnpath)
-                logger.info("bili-push_draw_绘图成功")
+                logger.debug("bili-push_draw_绘图成功")
                 code = 2
         else:
             logger.error("不支持的动态类型")
@@ -1973,9 +2002,9 @@ def get_draw(data, only_info: bool = False):
                 message_body = "[不支持的动态类型]"
                 if len(message_body) > 80:
                     message_body = message_body[0:79] + "……"
-            logger.info("bili-push_开始绘图")
+            logger.debug("bili-push_开始绘图")
             if run:
-                logger.info("bili-push_开始绘图")
+                logger.debug("bili-push_开始绘图")
                 fortsize = 30
                 font = ImageFont.truetype(font=fontfile, size=fortsize)
 
@@ -1986,7 +2015,7 @@ def get_draw(data, only_info: bool = False):
                 paste_image = draw_text("暂不支持的动态类型",
                                         size=30,
                                         textlen=24,
-                                        biliemoji_infos=emoji_infos,
+                                        bili_emoji_infos=emoji_infos,
                                         calculate=True)
                 w, h = paste_image.size
                 image_y += h
@@ -2005,7 +2034,7 @@ def get_draw(data, only_info: bool = False):
                 paste_image = draw_text("[不支持动态类型]",
                                         size=30,
                                         textlen=24,
-                                        biliemoji_infos=emoji_infos)
+                                        bili_emoji_infos=emoji_infos)
                 draw_image.paste(paste_image, (x, y), mask=paste_image)
 
                 returnpath = cachepath + 'bili动态/'
@@ -2013,7 +2042,7 @@ def get_draw(data, only_info: bool = False):
                     os.makedirs(returnpath)
                 returnpath = f"{returnpath}{date}_{timenow}_{random.randint(1000, 9999)}.png"
                 draw_image.save(returnpath)
-                logger.info("bili-push_draw_绘图成功")
+                logger.debug("bili-push_draw_绘图成功")
                 code = 2
 
     except Exception as e:
@@ -2024,7 +2053,7 @@ def get_draw(data, only_info: bool = False):
         message_images = []
         code = 0
 
-    logger.info("bili-push_draw_结束获取消息")
+    logger.debug("bili-push_draw_结束绘制")
     return {
         "code": code,
         "draw_path": returnpath,
@@ -2107,7 +2136,7 @@ async def bili_push_command(bot: Bot, messageevent: MessageEvent):
                        'groupcode varchar(10), uid int(10), liveid int(10))')
         # 判断是否存在旧数据库
         if "subscriptionlist2" in tables:
-            # 如果是，则存到数据库2
+            # 如果是，则存到数据库3
             cursor.execute("SELECT * FROM subscriptionlist2")
             datas = cursor.fetchall()
             for data in datas:
@@ -2117,7 +2146,7 @@ async def bili_push_command(bot: Bot, messageevent: MessageEvent):
                 cursor.execute(f'replace into subscriptionlist3 ("groupcode","uid","liveid") '
                                f'values("{data[1]}",{data[2]},{liveid})')
         elif "subscriptionlist" in tables:
-            # 如果是，则存到数据库2
+            # 如果是，则存到数据库3
             cursor.execute("SELECT * FROM subscriptionlist")
             datas = cursor.fetchall()
             for data in datas:
@@ -2126,12 +2155,30 @@ async def bili_push_command(bot: Bot, messageevent: MessageEvent):
                 liveid = 0
                 cursor.execute(f'replace into subscriptionlist3 ("groupcode","uid","liveid") '
                                f'values("{data[1]}",{data[2]},{liveid})')
+    if "livelist4" not in tables:
+        # 如未创建，则创建
+        cursor.execute('create table livelist4(uid varchar(10) primary key, state varchar(10), draw varchar(10), '
+                       'username varchar(10), message_title varchar(10), room_id varchar(10), image varchar(10))')
+        if "livelist3" in tables:
+            cursor.execute("SELECT * FROM livelist3")
+            datas = cursor.fetchall()
+            for data in datas:
+                # 写入数据
+                cursor.execute(
+                    f'replace into livelist4 (uid, state, draw, username, message_title, room_id, image) '
+                    f'values'
+                    f'("{data[1]}","{data[2]}","{data[3]}","{data[4]}","{data[5]}","{data[6]}","none")')
+    if "wait_push2" not in tables:
+        cursor.execute(
+            "create table 'wait_push2' (dynamicid int(10) primary key, uid varchar(10), "
+            "draw_path varchar(20), message_title varchar(20), message_url varchar(20), "
+            "message_body varchar(20), message_images varchar(20))")
     cursor.close()
     conn.commit()
     conn.close()
 
     if command == "最新动态":
-        logger.info("command:查询最新动态")
+        logger.debug("command:查询最新动态")
         code = 0
 
         # 判断command2是否为纯数字或l开头的数字
@@ -2156,11 +2203,11 @@ async def bili_push_command(bot: Bot, messageevent: MessageEvent):
             message = "请添加uid或房间id来添加订阅"
         else:
             uid = command2
-            logger.info(f"开始获取信息-{uid}")
+            logger.debug(f"开始获取信息-{uid}")
             url = 'https://api.vc.bilibili.com/dynamic_svr/v1/dynamic_svr/space_history?host_uid=' + uid
             returnjson = connect_api("json", url)
             if returnjson["code"] == 0:
-                logger.info('获取动态图片并发送')
+                logger.debug('获取动态图片并发送')
                 # 获取动态图片并发送
                 draw_info = get_draw(returnjson["data"]["cards"][0])
                 return_code = draw_info["code"]
@@ -2220,12 +2267,12 @@ async def bili_push_command(bot: Bot, messageevent: MessageEvent):
                             logger.error("读取动态推送样式出错，请检查配置是否正确")
                     code = 4
             else:
-                logger.info('returncode!=0')
+                logger.debug('returncode!=0')
                 code = 1
                 message = "获取动态失败"
     elif command == "添加订阅":
         if qq in plugin_config("admin", groupcode):
-            logger.info("command:添加订阅")
+            logger.debug("command:添加订阅")
             code = 0
 
             # 判断command2是否为纯数字或l开头的数字
@@ -2292,7 +2339,7 @@ async def bili_push_command(bot: Bot, messageevent: MessageEvent):
                     code = 1
                     message = "添加直播、动态间订阅成功"
                 elif subscription is None:
-                    logger.info("无订阅，添加订阅")
+                    logger.debug("无订阅，添加订阅")
 
                     # 写入数据
                     conn = sqlite3.connect(livedb)
@@ -2304,12 +2351,12 @@ async def bili_push_command(bot: Bot, messageevent: MessageEvent):
                     conn.close()
 
                     # 将历史动态存到数据库中
-                    logger.info('关注成功，将历史动态存到数据库中')
+                    logger.debug('关注成功，将历史动态存到数据库中')
                     url = f"https://api.vc.bilibili.com/dynamic_svr/v1/dynamic_svr/space_history?host_uid={uid}"
                     returnjson = connect_api("json", url)
                     returncode = returnjson["code"]
                     if returncode == 0:
-                        logger.info('获取动态图片并发送')
+                        logger.debug('获取动态图片并发送')
                         if returnjson["data"]["has_more"] == 1:
                             return_datas = returnjson["data"]["cards"]
 
@@ -2364,7 +2411,7 @@ async def bili_push_command(bot: Bot, messageevent: MessageEvent):
             message = "您无权限操作哦"
     elif command == "删除订阅":
         if qq in plugin_config("admin", groupcode):
-            logger.info("command:删除订阅")
+            logger.debug("command:删除订阅")
             code = 0
 
             # 判断command2是否为纯数字或l开头的数字
@@ -2466,7 +2513,7 @@ minute = "*/" + waittime
 
 @scheduler.scheduled_job("cron", minute=minute, id="job_0")
 async def run_bili_push():
-    logger.info(f"bili_push_{plugin_version}")
+    logger.debug(f"bili_push_autorun_{plugin_version}")
     # ############开始自动运行插件############
     now_maximum_send = maximum_send
     date = str(time.strftime("%Y-%m-%d", time.localtime()))
@@ -2481,7 +2528,7 @@ async def run_bili_push():
     for botid in botids:
         bot_type = nonebot.get_bot(botid).type
         if bot_type != "OneBot V11":
-            logger.info("暂不支持的适配器类型")
+            logger.debug("暂不支持的适配器类型")
             continue
         botid = str(botid)
 
@@ -2507,7 +2554,7 @@ async def run_bili_push():
         for data in datas:
             if data[1] != "sqlite_sequence":
                 tables.append(data[1])
-        # 检查是否创建订阅数据库3
+        # 检查是否创建数据库
         if "subscriptionlist3" not in tables:
             # 如未创建，则创建
             cursor.execute('create table subscriptionlist3(id INTEGER primary key AUTOINCREMENT, '
@@ -2558,7 +2605,7 @@ async def run_bili_push():
         # ############获取动态############
         run = True  # 代码折叠
         if run:
-            logger.info('---获取更新的动态')
+            logger.debug('---获取更新的动态')
 
             conn = sqlite3.connect(livedb)
             cursor = conn.cursor()
@@ -2569,7 +2616,7 @@ async def run_bili_push():
             conn.close()
 
             if not subscriptions:
-                logger.info("无订阅")
+                logger.debug("无订阅")
             else:
                 subscriptionlist = []
                 for subscription in subscriptions:
@@ -2585,7 +2632,7 @@ async def run_bili_push():
                                 subscriptionlist.append(uid)
 
                 for uid in subscriptionlist:
-                    logger.info(f"开始获取信息-{uid}")
+                    logger.debug(f"开始获取信息-{uid}")
                     url = 'https://api.vc.bilibili.com/dynamic_svr/v1/dynamic_svr/space_history?host_uid=' + uid
                     returnjson = connect_api("json", url)
                     if returnjson["code"] != 0:
@@ -2593,10 +2640,10 @@ async def run_bili_push():
                     else:
                         return_datas = returnjson["data"]
                         if return_datas["has_more"] == 0:
-                            logger.info("该up主无动态")
+                            logger.debug("该up主无动态")
                         else:
                             return_datas = return_datas["cards"]
-                            logger.info('获取up主动态列表成功')
+                            logger.debug('获取up主动态列表成功')
                             # 比较已保存内容
                             conn = sqlite3.connect(livedb)
                             cursor = conn.cursor()
@@ -2614,7 +2661,7 @@ async def run_bili_push():
                                     if time_distance < 86400:
                                         return_draw = get_draw(return_data)
                                         if return_draw["code"] == 0:
-                                            logger.info("不支持类型")
+                                            logger.debug("不支持类型")
                                         else:
                                             draw_path = return_draw["draw_path"]
                                             message_title = return_draw["message_title"]
@@ -2636,7 +2683,7 @@ async def run_bili_push():
         # ############获取直播状态############
         run = True  # 代码折叠
         if run:
-            logger.info('---------获取更新的直播----------')
+            logger.info("获取更新的直播")
 
             if use_api is True:
                 fontfile = get_file_path("腾祥嘉丽中圆.ttf")
@@ -2644,7 +2691,7 @@ async def run_bili_push():
                 fontfile = get_file_path("NotoSansSC[wght].ttf")
             fortsize = 30
             font = ImageFont.truetype(font=fontfile, size=fortsize)
-            logger.info("获取订阅列表")
+            logger.debug("获取订阅列表")
 
             conn = sqlite3.connect(livedb)
             cursor = conn.cursor()
@@ -2655,7 +2702,7 @@ async def run_bili_push():
             conn.close()
 
             if not subscriptions:
-                logger.info("无订阅")
+                logger.debug("无订阅")
             else:
                 subscriptionlist = []
                 if beta_test:
@@ -2678,7 +2725,7 @@ async def run_bili_push():
                         else:
                             livedata = json_data["data"]
                             uid = livedata["uid"]
-                            logger.info(f"bili_live_开始获取消息:{uid}")
+                            logger.debug(f"bili_live_开始获取消息:{uid}")
 
                             url = f"https://api.vc.bilibili.com/dynamic_svr/v1/dynamic_svr/space_history?host_uid={uid}"
                             json_data = connect_api("json", url)
@@ -2712,7 +2759,7 @@ async def run_bili_push():
                                 # online = livedata["online"]
 
                                 if live_status == "1":
-                                    logger.info("live开始绘图")
+                                    logger.debug("live开始绘图")
                                     draw_image = new_background(900, 800)
                                     draw = ImageDraw.Draw(draw_image)
 
@@ -2793,7 +2840,7 @@ async def run_bili_push():
         # ############推送直播状态############
         run = True  # 代码折叠
         if run:
-            logger.info('---------推送直播----------')
+            logger.info("推送直播")
             conn = sqlite3.connect(livedb)
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM subscriptionlist3")
@@ -2803,7 +2850,7 @@ async def run_bili_push():
             conn.close()
 
             if not subscriptions:
-                logger.info("无订阅")
+                logger.debug("无订阅")
             else:
                 for subscription in subscriptions:
                     groupcode = subscription[1]
@@ -2875,7 +2922,7 @@ async def run_bili_push():
                                     conn.commit()
                                     conn.close()
                         if send is False:
-                            logger.info("该订阅由另一个bot进行推送，本bot将不发送消息")
+                            logger.debug("该订阅由另一个bot进行推送，本bot将不发送消息")
 
                     # 检查是否是好友、是否入群
                     if groupcode.startswith("gp"):
@@ -2995,13 +3042,13 @@ async def run_bili_push():
                                                         now_maximum_send -= 1
                                                         await nonebot.get_bot(botid).send_private_msg(user_id=send_qq,
                                                                                                       message=msg)
-                                                        logger.info("发送私聊成功")
+                                                        logger.debug("发送私聊成功")
                                                         await asyncio.sleep(stime)
                                                     if new_push is True and state != "0":  # 第一次推送且是下播时不推送
                                                         now_maximum_send -= 1
                                                         await nonebot.get_bot(botid).send_private_msg(user_id=send_qq,
                                                                                                       message=msg)
-                                                        logger.info("发送私聊成功")
+                                                        logger.debug("发送私聊成功")
                                                         await asyncio.sleep(stime)
                                                     conn = sqlite3.connect(livedb)
                                                     cursor = conn.cursor()
@@ -3017,7 +3064,7 @@ async def run_bili_push():
                                                         f'私聊内容发送失败：send_qq：{send_qq},message:{message},'
                                                         f'retrnpath:{returnpath}')
                                             else:
-                                                logger.info("bot未入群")
+                                                logger.debug("bot未入群")
                                         else:
                                             send_groupcode = groupcode.removeprefix("g")
                                             if send_groupcode in grouplist:
@@ -3028,14 +3075,14 @@ async def run_bili_push():
                                                         await nonebot.get_bot(botid).send_group_msg(
                                                             group_id=send_groupcode,
                                                             message=msg)
-                                                        logger.info("发送群聊成功")
+                                                        logger.debug("发送群聊成功")
                                                         await asyncio.sleep(stime)
                                                     if new_push is True and state != "0":  # 第一次推送且是下播时不推送
                                                         now_maximum_send -= 1
                                                         await nonebot.get_bot(botid).send_group_msg(
                                                             group_id=send_groupcode,
                                                             message=msg)
-                                                        logger.info("发送群聊成功")
+                                                        logger.debug("发送群聊成功")
                                                         await asyncio.sleep(stime)
                                                     conn = sqlite3.connect(livedb)
                                                     cursor = conn.cursor()
@@ -3050,12 +3097,12 @@ async def run_bili_push():
                                                         f"群聊内容发送失败：groupcode：{send_groupcode},message:{message}"
                                                         f",retrnpath:{returnpath}")
                                             else:
-                                                logger.info("bot未入群")
+                                                logger.debug("bot未入群")
 
         # ############推送动态############
         run = True  # 代码折叠
         if run:
-            logger.info('---------推送动态----------')
+            logger.info("推送动态")
             conn = sqlite3.connect(livedb)
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM subscriptionlist3")
@@ -3065,7 +3112,7 @@ async def run_bili_push():
             conn.close()
 
             if not subscriptions:
-                logger.info("无订阅")
+                logger.debug("无订阅")
             else:
                 for subscription in subscriptions:
                     groupcode = subscription[1]
@@ -3183,7 +3230,6 @@ async def run_bili_push():
 
                         pushlist = []
                         if not dynamicids:
-                            logger.info("if not pushed_datas:")
                             conn = sqlite3.connect(livedb)
                             cursor = conn.cursor()
                             for data in datas:
@@ -3203,7 +3249,7 @@ async def run_bili_push():
                                 if new_dynamicid not in dynamicids:
                                     if len(pushlist) <= 2:  # 限制单次发送条数
                                         pushlist.append(new_dynamicid)
-                        logger.info("未推送的动态" + str(pushlist))
+                        logger.debug("未推送的动态" + str(pushlist))
 
                         # 分别发送图片，并保存为已推送
                         for dynamicid in pushlist:
@@ -3273,7 +3319,7 @@ async def run_bili_push():
                                     # bot已添加好友，发送消息
                                     try:
                                         await nonebot.get_bot(botid).send_private_msg(user_id=send_qq, message=msg)
-                                        logger.info("发送私聊成功")
+                                        logger.debug("发送私聊成功")
                                     except Exception as e:
                                         logger.error(f"私聊内容发送失败：send_qq：{send_qq},"
                                                      f"message:{message},retrnpath:{draw_path}")
@@ -3290,14 +3336,14 @@ async def run_bili_push():
                                     conn.close()
                                     await asyncio.sleep(stime)
                                 else:
-                                    logger.info("bot未入群")
+                                    logger.debug("bot未入群")
                             else:
                                 send_groupcode = groupcode.removeprefix("g")
                                 if send_groupcode in grouplist:
                                     # bot已添加好友，发送消息
                                     try:
                                         await nonebot.get_bot(botid).send_group_msg(group_id=send_groupcode, message=msg)
-                                        logger.info("发送群聊成功")
+                                        logger.debug("发送群聊成功")
                                     except Exception as e:
                                         logger.error(f"群聊内容发送失败：groupcode：{send_groupcode},"
                                                      f"message:{message},retrnpath:{draw_path}")
@@ -3314,7 +3360,7 @@ async def run_bili_push():
                                     conn.close()
                                     await asyncio.sleep(stime)
                                 else:
-                                    logger.info("bot未入群")
+                                    logger.debug("bot未入群")
 
-    logger.info("run over")
+    logger.debug("bili_push_runfinish")
     pass
