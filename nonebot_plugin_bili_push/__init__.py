@@ -20,7 +20,7 @@ import toml
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 
-plugin_version = "1.1.17"
+plugin_version = "1.1.18"
 
 def connect_api(type: str, url: str, post_json=None, file_path: str = None):
     h = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -2136,7 +2136,7 @@ async def bili_push_command(bot: Bot, messageevent: MessageEvent):
                        'groupcode varchar(10), uid int(10), liveid int(10))')
         # 判断是否存在旧数据库
         if "subscriptionlist2" in tables:
-            # 如果是，则存到数据库2
+            # 如果是，则存到数据库3
             cursor.execute("SELECT * FROM subscriptionlist2")
             datas = cursor.fetchall()
             for data in datas:
@@ -2146,7 +2146,7 @@ async def bili_push_command(bot: Bot, messageevent: MessageEvent):
                 cursor.execute(f'replace into subscriptionlist3 ("groupcode","uid","liveid") '
                                f'values("{data[1]}",{data[2]},{liveid})')
         elif "subscriptionlist" in tables:
-            # 如果是，则存到数据库2
+            # 如果是，则存到数据库3
             cursor.execute("SELECT * FROM subscriptionlist")
             datas = cursor.fetchall()
             for data in datas:
@@ -2155,6 +2155,24 @@ async def bili_push_command(bot: Bot, messageevent: MessageEvent):
                 liveid = 0
                 cursor.execute(f'replace into subscriptionlist3 ("groupcode","uid","liveid") '
                                f'values("{data[1]}",{data[2]},{liveid})')
+    if "livelist4" not in tables:
+        # 如未创建，则创建
+        cursor.execute('create table livelist4(uid varchar(10) primary key, state varchar(10), draw varchar(10), '
+                       'username varchar(10), message_title varchar(10), room_id varchar(10), image varchar(10))')
+        if "livelist3" in tables:
+            cursor.execute("SELECT * FROM livelist3")
+            datas = cursor.fetchall()
+            for data in datas:
+                # 写入数据
+                cursor.execute(
+                    f'replace into livelist4 (uid, state, draw, username, message_title, room_id, image) '
+                    f'values'
+                    f'("{data[1]}","{data[2]}","{data[3]}","{data[4]}","{data[5]}","{data[6]}","none")')
+    if "wait_push2" not in tables:
+        cursor.execute(
+            "create table 'wait_push2' (dynamicid int(10) primary key, uid varchar(10), "
+            "draw_path varchar(20), message_title varchar(20), message_url varchar(20), "
+            "message_body varchar(20), message_images varchar(20))")
     cursor.close()
     conn.commit()
     conn.close()
@@ -2536,7 +2554,7 @@ async def run_bili_push():
         for data in datas:
             if data[1] != "sqlite_sequence":
                 tables.append(data[1])
-        # 检查是否创建订阅数据库3
+        # 检查是否创建数据库
         if "subscriptionlist3" not in tables:
             # 如未创建，则创建
             cursor.execute('create table subscriptionlist3(id INTEGER primary key AUTOINCREMENT, '
