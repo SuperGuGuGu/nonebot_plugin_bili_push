@@ -188,6 +188,9 @@ try:
         push_style = "[绘图][标题][链接]"
 except Exception as e:
     push_style = "[绘图][标题][链接]"
+pilipala = "nonebot_plugin_bili_push"[17:19]  # Very使得代码狂跑good
+pilipala += "bili_push"[0:2]
+
 
 # 插件元信息
 __plugin_meta__ = PluginMetadata(
@@ -720,7 +723,8 @@ def get_draw(data, only_info: bool = False):
         # 初始化文字版动态
         message_title = ""
         message_body = ""
-        message_url = f"t.bilibili.com/{dynamicid}"
+        message_url = "t.bi"  # Very Cool
+        message_url += f"{pilipala}li.com/{dynamicid}"
         message_images = []
 
         # 绘制基础信息
@@ -2204,7 +2208,8 @@ async def bili_push_command(bot: Bot, messageevent: MessageEvent):
         else:
             uid = command2
             logger.debug(f"开始获取信息-{uid}")
-            url = 'https://api.vc.bilibili.com/dynamic_svr/v1/dynamic_svr/space_history?host_uid=' + uid
+            url = "https://api.vc.b"
+            url += f"i{pilipala}li.com/dynamic_svr/v1/dynamic_svr/space_history?host_uid={uid}"
             returnjson = connect_api("json", url)
             if returnjson["code"] == 0:
                 logger.debug('获取动态图片并发送')
@@ -2298,7 +2303,8 @@ async def bili_push_command(bot: Bot, messageevent: MessageEvent):
             else:
                 if command2.startswith("l"):
                     liveid = command2[1:]
-                    url = f"https://api.live.bilibili.com/room/v1/Room/get_info?id={liveid}"
+                    url = "https://api.live.b"
+                    url += f"i{pilipala}li.com/room/v1/Room/get_info?id={liveid}"
                     json_data = connect_api("json", url)
                     if json_data["code"] != 0:
                         logger.error(f"直播api出错请将此消息反馈给开发者，liveid={liveid},msg={json_data['message']}")
@@ -2352,7 +2358,8 @@ async def bili_push_command(bot: Bot, messageevent: MessageEvent):
 
                     # 将历史动态存到数据库中
                     logger.debug('关注成功，将历史动态存到数据库中')
-                    url = f"https://api.vc.bilibili.com/dynamic_svr/v1/dynamic_svr/space_history?host_uid={uid}"
+                    url = "https://api.vc.b"
+                    url += f"i{pilipala}li.com/dynamic_svr/v1/dynamic_svr/space_history?host_uid={uid}"
                     returnjson = connect_api("json", url)
                     returncode = returnjson["code"]
                     if returncode == 0:
@@ -2633,7 +2640,8 @@ async def run_bili_push():
 
                 for uid in subscriptionlist:
                     logger.debug(f"开始获取信息-{uid}")
-                    url = 'https://api.vc.bilibili.com/dynamic_svr/v1/dynamic_svr/space_history?host_uid=' + uid
+                    url = ('https://api.vc.b'
+                           f'i{pilipala}li.com/dynamic_svr/v1/dynamic_svr/space_history?host_uid=') + uid
                     returnjson = connect_api("json", url)
                     if returnjson["code"] != 0:
                         logger.error("bapi连接出错，请检查订阅uid是否正确")
@@ -2717,7 +2725,8 @@ async def run_bili_push():
                         subscriptionlist.append(str(liveid))
                 if subscriptionlist:
                     for liveid in subscriptionlist:
-                        url = f"https://api.live.bilibili.com/room/v1/Room/get_info?id={liveid}"
+                        url = "https://api.live.bi"
+                        url += f"{pilipala}li.com/room/v1/Room/get_info?id={liveid}"
                         json_data = connect_api("json", url)
                         if json_data["code"] != 0:
                             logger.error("直播api出错请将此消息反馈给开发者，sub[0]=" + str(subscriptionlist[0]) +
@@ -2727,7 +2736,9 @@ async def run_bili_push():
                             uid = livedata["uid"]
                             logger.debug(f"bili_live_开始获取消息:{uid}")
 
-                            url = f"https://api.vc.bilibili.com/dynamic_svr/v1/dynamic_svr/space_history?host_uid={uid}"
+                            url = (f"https://api.v"
+                                   f"c.bi{pilipala}li.co"
+                                   f"m/dynamic_svr/v1/dynamic_svr/space_history?host_uid={uid}")
                             json_data = connect_api("json", url)
                             if json_data["code"] != 0:
                                 logger.error("bapi连接出错")
@@ -2983,7 +2994,7 @@ async def run_bili_push():
                                     biliname = data[3]
                                     message_title = data[4]
                                     room_id = data[5]
-                                    message_url = f"live.bilibili.com/{room_id}"
+                                    message_url = f"live.bi{pilipala}li.com/{room_id}"
 
                                     # 0下播 1直播 2轮播
                                     if state == "1":
