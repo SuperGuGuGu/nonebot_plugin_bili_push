@@ -22,7 +22,12 @@ from nonebot_plugin_apscheduler import scheduler
 
 plugin_version = "1.1.18"
 
-def connect_api(type: str, url: str, post_json=None, file_path: str = None):
+def connect_api(
+        type: str,
+        url: str,
+        post_json=None,
+        file_path: str = None):
+    logger.debug(f"connect_api请求URL：{url}")
     h = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
                        "Chrome/118.0.0.0 Safari/537.36 Edg/118.0.2088.76"}
     if type == "json":
@@ -31,7 +36,7 @@ def connect_api(type: str, url: str, post_json=None, file_path: str = None):
         else:
             return json.loads(httpx.post(url, json=post_json, headers=h).text)
     elif type == "image":
-        if url in ["none", "None", "", " "] or url is None:
+        if url is None or url in ["none", "None", "", " "]:
             image = draw_text("获取图片出错", 50, 10)
         else:
             try:
@@ -41,15 +46,17 @@ def connect_api(type: str, url: str, post_json=None, file_path: str = None):
         return image
     elif type == "file":
         cache_file_path = file_path + "cache"
+        f = open(cache_file_path, "wb")
         try:
-            # 这里不能用httpx。用就报错。
-            with open(cache_file_path, "wb") as f, requests.get(url, headers=h) as res:
-                f.write(res.content)
-            logger.debug(f"下载完成{file_path}")
-            shutil.copyfile(cache_file_path, file_path)
-            os.remove(cache_file_path)
-        except Exception as e:
-            logger.error(f"文件下载出错-{file_path}")
+            res = httpx.get(url, headers=h).content
+            f.write(res)
+            logger.debug(f"下载完成-{file_path}")
+        except:
+            raise Exception
+        finally:
+            f.close()
+        shutil.copyfile(cache_file_path, file_path)
+        os.remove(cache_file_path)
     return
 
 config = nonebot.get_driver().config
@@ -340,7 +347,6 @@ def draw_text(texts: str,
               text_color="#000000",
               bili_emoji_infos=None,
               bili_at_infos=None,
-              draw_qqemoji=False,
               calculate=False
               ):
     """
@@ -353,7 +359,6 @@ def draw_text(texts: str,
     :param text_color: 字体颜色，例："#FFFFFF"、(10, 10, 10)
     :param bili_emoji_infos: bili的表情
     :param bili_at_infos: bili的at文字信息，显示蓝色
-    :param draw_qqemoji: 识别qqemoji
     :param calculate: 计算长度。True时只返回空白图，不用粘贴文字，加快速度。
 
     :return: 图片文件（RGBA）
