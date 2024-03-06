@@ -20,7 +20,7 @@ import toml
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 
-plugin_version = "1.1.18"
+plugin_version = "1.1.19"
 
 def connect_api(
         type: str,
@@ -367,8 +367,10 @@ def draw_text(texts: str,
     if bili_at_infos is None:
         bili_at_infos = []
     else:
-        bili_at_infos = json.loads(bili_at_infos)
-
+        try:
+            bili_at_infos = json.loads(bili_at_infos)
+        except Exception as e:
+            bili_at_infos = []
     def get_font_render_w(text):
         if text == " ":
             return 20
