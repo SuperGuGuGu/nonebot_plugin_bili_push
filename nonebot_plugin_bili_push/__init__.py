@@ -2728,9 +2728,10 @@ async def run_bili_push():
 
                                             cursor.execute(
                                                 f"replace into wait_push3(dynamicid,uid,draw_path,message_title,"
-                                                f'message_url,message_body,message_images) values("{dynamicid}","{uid}",'
-                                                f'"{draw_path}","{message_title}","{message_url}",' + f"'{message_body}'"
-                                                                                                      f',"{message_images}")')
+                                                f'message_url,message_body,message_images,dynamic_time) '
+                                                f'values("{dynamicid}","{uid}","{draw_path}","{message_title}",'
+                                                f'"{message_url}",' + f"'{message_body}'" + f',"{message_images}", '
+                                                                                            f'{dyma_data})')
                             cursor.close()
                             conn.commit()
                             conn.close()
