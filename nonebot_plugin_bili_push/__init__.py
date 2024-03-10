@@ -7,7 +7,6 @@ from nonebot.plugin import PluginMetadata
 import nonebot
 import os
 import httpx
-import requests
 import re
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
@@ -20,7 +19,8 @@ import toml
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 
-plugin_version = "1.1.19"
+plugin_version = "1.1.20"
+
 
 def connect_api(
         type: str,
@@ -58,6 +58,7 @@ def connect_api(
         shutil.copyfile(cache_file_path, file_path)
         os.remove(cache_file_path)
     return
+
 
 config = nonebot.get_driver().config
 # 读取配置
@@ -131,7 +132,7 @@ try:
     if "\\" in basepath:
         basepath = basepath.replace("\\", "/")
     if basepath.startswith("./"):
-        basepath = os.path.abspath('.') + "/" + basepath.removeprefix(".")
+        basepath = os.path.abspath('.') + basepath.removeprefix(".")
         if not basepath.endswith("/"):
             basepath += "/"
     else:
@@ -195,9 +196,13 @@ try:
         push_style = "[绘图][标题][链接]"
 except Exception as e:
     push_style = "[绘图][标题][链接]"
+# 配置11：
+try:
+    remove_cache = config.bilipush_remove_cache
+except Exception as e:
+    remove_cache = False
 pilipala = "nonebot_plugin_bili_push"[17:19]  # Very使得代码狂跑good
 pilipala += "bili_push"[0:2]
-
 
 # 插件元信息
 __plugin_meta__ = PluginMetadata(
@@ -265,49 +270,29 @@ def plugin_config(config_name: str, groupcode: str):
             config_data = adminqq
 
     elif config_name == "bilipush_botswift":
-        if group_config_data is not None:
-            config_data = group_config_data
-        else:
-            config_data = config_botswift
+        config_data = group_config_data if group_config_data is not None else config_botswift
 
     elif config_name == "group_command_starts":
-        if group_config_data is not None:
-            config_data = group_config_data
-        else:
-            config_data = command_starts
+        config_data = group_config_data if group_config_data is not None else command_starts
 
     elif config_name == "bilipush_push_style":
-        if group_config_data is not None:
-            config_data = group_config_data
-        else:
-            config_data = push_style
+        config_data = group_config_data if group_config_data is not None else push_style
 
     elif config_name == "at_all":
-        if group_config_data is not None:
-            config_data = group_config_data
-        else:
-            config_data = False
+        config_data = group_config_data if group_config_data is not None else False
 
     elif config_name == "ignore_live_list":
-        if group_config_data is not None:
-            config_data = group_config_data
-        else:
-            config_data = []
+        config_data = group_config_data if group_config_data is not None else []
 
     elif config_name == "ignore_dynamic_list":
-        if group_config_data is not None:
-            config_data = group_config_data
-        else:
-            config_data = []
+        config_data = group_config_data if group_config_data is not None else []
 
     elif config_name == "none":
-        config_data = None
+        config_data = group_config_data if group_config_data is not None else None
+
     elif config_name == "none":
-        config_data = None
-    elif config_name == "none":
-        config_data = None
-    elif config_name == "none":
-        config_data = None
+        config_data = group_config_data if group_config_data is not None else None
+
     else:
         config_data = None
 
@@ -371,6 +356,7 @@ def draw_text(texts: str,
             bili_at_infos = json.loads(bili_at_infos)
         except Exception as e:
             bili_at_infos = []
+
     def get_font_render_w(text):
         if text == " ":
             return 20
@@ -688,12 +674,12 @@ def get_draw(data, only_info: bool = False):
         return image_background
 
     date = str(time.strftime("%Y-%m-%d", time.localtime()))
-    date_year = str(time.strftime("%Y", time.localtime()))
-    date_month = str(time.strftime("%m", time.localtime()))
-    date_day = str(time.strftime("%d", time.localtime()))
+    date_year = int(time.strftime("%Y", time.localtime()))
+    date_month = int(time.strftime("%m", time.localtime()))
+    date_day = int(time.strftime("%d", time.localtime()))
     timenow = str(time.strftime("%H-%M-%S", time.localtime()))
 
-    cachepath = basepath + f"cache/draw/{date_year}/{date_month}/{date_day}/"
+    cachepath = f"{basepath}cache/draw/{date_year}/{date_month}/{date_day}/"
     if not os.path.exists(cachepath):
         os.makedirs(cachepath)
     addimage = ""
@@ -869,7 +855,7 @@ def get_draw(data, only_info: bool = False):
         elif bilitype == 1:
             card_message = bilidata["item"]["content"]
             origin_type = bilidata["item"]["orig_type"]
-            at_infos = bilidata["item"]["ctrl"] if "ctrl" in bilidata["item"] else None
+            at_infos = bilidata["item"]["ctrl"] if "ctrl" in bilidata["item"] and bilidata["item"]["ctrl"] != "" else None
             try:
                 origin_emoji_infos = data["display"]["origin"]["emoji_info"]["emoji_details"]
             except Exception as e:
@@ -2072,7 +2058,7 @@ def get_draw(data, only_info: bool = False):
         "message_url": message_url,
         "message_body": message_body,
         "message_images": message_images
-        }
+    }
 
 
 get_new = on_command("最新动态", aliases={'添加订阅', '删除订阅', '查看订阅', '帮助'}, block=False)
@@ -2124,9 +2110,9 @@ async def bili_push_command(bot: Bot, messageevent: MessageEvent):
     else:
         command2 = ''
 
-    date_year = str(time.strftime("%Y", time.localtime()))
-    date_month = str(time.strftime("%m", time.localtime()))
-    date_day = str(time.strftime("%d", time.localtime()))
+    date_year = int(time.strftime("%Y", time.localtime()))
+    date_month = int(time.strftime("%m", time.localtime()))
+    date_day = int(time.strftime("%d", time.localtime()))
     cachepath = f"{basepath}cache/draw/{date_year}/{date_month}/{date_day}/"
 
     # 新建数据库
@@ -2179,11 +2165,11 @@ async def bili_push_command(bot: Bot, messageevent: MessageEvent):
                     f'replace into livelist4 (uid, state, draw, username, message_title, room_id, image) '
                     f'values'
                     f'("{data[1]}","{data[2]}","{data[3]}","{data[4]}","{data[5]}","{data[6]}","none")')
-    if "wait_push2" not in tables:
+    if "wait_push3" not in tables:
         cursor.execute(
-            "create table 'wait_push2' (dynamicid int(10) primary key, uid varchar(10), "
-            "draw_path varchar(20), message_title varchar(20), message_url varchar(20), "
-            "message_body varchar(20), message_images varchar(20))")
+            "create table 'wait_push3' (dynamicid int(10) primary key, uid varchar(10), draw_path varchar(20), "
+            "message_title varchar(20), message_url varchar(20), message_body varchar(20), "
+            "message_images varchar(20), dynamic_time int(10))")
     cursor.close()
     conn.commit()
     conn.close()
@@ -2390,7 +2376,7 @@ async def bili_push_command(bot: Bot, messageevent: MessageEvent):
                                 dynamicid = str(return_data["desc"]["dynamic_id"])
                                 cursor.execute(f"replace into {groupcode}(dynamicid,uid) values('{dynamicid}','{uid}')")
                             # 检查数据库中是否有旧动态，更新到群已推送列表中
-                            cursor.execute(f"SELECT * FROM wait_push2 WHERE uid='{uid}'")
+                            cursor.execute(f"SELECT * FROM wait_push3 WHERE uid='{uid}'")
                             datas = cursor.fetchall()
                             if datas:
                                 for data in datas:
@@ -2531,12 +2517,66 @@ async def run_bili_push():
     # ############开始自动运行插件############
     now_maximum_send = maximum_send
     date = str(time.strftime("%Y-%m-%d", time.localtime()))
-    date_year = str(time.strftime("%Y", time.localtime()))
-    date_month = str(time.strftime("%m", time.localtime()))
-    date_day = str(time.strftime("%d", time.localtime()))
+    date_year = int(time.strftime("%Y", time.localtime()))
+    date_month = int(time.strftime("%m", time.localtime()))
+    date_day = int(time.strftime("%d", time.localtime()))
     timenow = str(time.strftime("%H-%M-%S", time.localtime()))
-    cachepath = basepath + f"cache/draw/{date_year}/{date_month}/{date_day}/"
+    cachepath = f"{basepath}cache/draw/{date_year}/{date_month}/{date_day}/"
     message = "none"
+
+    # 定时删除缓存
+    if remove_cache:
+        logger.debug("自动删除缓存")
+        # 删除数据库缓存
+        conn = sqlite3.connect(livedb)
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM sqlite_master WHERE type='table'")
+        datas = cursor.fetchall()
+        tables = []
+        for data in datas:
+            if data[1] != "sqlite_sequence":
+                tables.append(data[1])
+        if "wait_push3" not in tables:
+            datas = []
+        else:
+            cursor.execute("SELECT * FROM wait_push3")
+            datas = cursor.fetchall()
+        for data in datas:
+            dynamic_time = int(data[7])
+            dynamicid = data[0]
+            if int(time.time()) - dynamic_time > 86400:
+                cursor.execute(f'DELETE FROM wait_push3 WHERE dynamicid = {dynamicid}')
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        # 删除图片文件
+        def del_files2(dir_path):
+            """
+            删除文件夹下所有文件和路径，保留要删的父文件夹
+            """
+            for root, dirs, files in os.walk(dir_path, topdown=False):
+                # 第一步：删除文件
+                for name in files:
+                    os.remove(os.path.join(root, name))  # 删除文件
+                # 第二步：删除空文件夹
+                for name in dirs:
+                    os.rmdir(os.path.join(root, name))  # 删除一个空目录
+
+        f"{basepath}cache/draw/{date_year}/{date_month}/{date_day}/"
+        # 清除缓存
+        if os.path.exists(f"{basepath}cache/draw/{date_year - 2}"):
+            filenames = os.listdir(f"{basepath}cache/draw/{date_year - 2}")
+            if filenames:
+                del_files2(f"{basepath}cache/draw/{date_year - 2}")
+        if os.path.exists(f"{basepath}cache/draw/{date_year}/{date_month - 2}"):
+            filenames = os.listdir(f"{basepath}cache/draw/{date_year}/{date_month - 2}")
+            if filenames:
+                del_files2(f"{basepath}cache/draw/{date_year}/{date_month - 2}")
+        if os.path.exists(f"{basepath}cache/draw/{date_year}/{date_month}/{date_day - 2}"):
+            filenames = os.listdir(f"{basepath}cache/draw/{date_year}/{date_month}/{date_day - 2}")
+            if filenames:
+                del_files2(f"{basepath}cache/draw/{date_year}/{date_month}/{date_day - 2}")
 
     botids = list(nonebot.get_bots())
     for botid in botids:
@@ -2607,11 +2647,11 @@ async def run_bili_push():
                         f'replace into livelist4 (uid, state, draw, username, message_title, room_id, image) '
                         f'values'
                         f'("{data[1]}","{data[2]}","{data[3]}","{data[4]}","{data[5]}","{data[6]}","none")')
-        if "wait_push2" not in tables:
+        if "wait_push3" not in tables:
             cursor.execute(
-                "create table 'wait_push2' (dynamicid int(10) primary key, uid varchar(10), "
-                "draw_path varchar(20), message_title varchar(20), message_url varchar(20), "
-                "message_body varchar(20), message_images varchar(20))")
+                "create table 'wait_push3' (dynamicid int(10) primary key, uid varchar(10), draw_path varchar(20), "
+                "message_title varchar(20), message_url varchar(20), message_body varchar(20), "
+                "message_images varchar(20), dynamic_time int(10))")
         cursor.close()
         conn.commit()
         conn.close()
@@ -2664,7 +2704,7 @@ async def run_bili_push():
                             cursor = conn.cursor()
                             for return_data in return_datas:
                                 dynamicid = str(return_data["desc"]["dynamic_id"])
-                                cursor.execute("SELECT * FROM 'wait_push2' WHERE dynamicid = '" + dynamicid + "'")
+                                cursor.execute("SELECT * FROM 'wait_push3' WHERE dynamicid = '" + dynamicid + "'")
                                 data = cursor.fetchone()
                                 if data is None:
                                     dyma_data = return_data["desc"]["timestamp"]
@@ -2687,7 +2727,7 @@ async def run_bili_push():
                                             message_body = message_body.replace("'", '"')
 
                                             cursor.execute(
-                                                f"replace into wait_push2(dynamicid,uid,draw_path,message_title,"
+                                                f"replace into wait_push3(dynamicid,uid,draw_path,message_title,"
                                                 f'message_url,message_body,message_images) values("{dynamicid}","{uid}",'
                                                 f'"{draw_path}","{message_title}","{message_url}",' + f"'{message_body}'"
                                                                                                       f',"{message_images}")')
@@ -3231,7 +3271,7 @@ async def run_bili_push():
                         cursor.execute("SELECT * FROM " + groupcode + " WHERE uid = " + uid)
                         pushed_datas = cursor.fetchall()
                         # 获取新动态列表
-                        cursor.execute("SELECT * FROM 'wait_push2' WHERE uid = '" + uid + "'")
+                        cursor.execute("SELECT * FROM 'wait_push3' WHERE uid = '" + uid + "'")
                         datas = cursor.fetchall()
                         cursor.close()
                         conn.commit()
@@ -3273,7 +3313,7 @@ async def run_bili_push():
                         for dynamicid in pushlist:
                             conn = sqlite3.connect(livedb)
                             cursor = conn.cursor()
-                            cursor.execute(f"SELECT * FROM 'wait_push2' WHERE dynamicid = {dynamicid}")
+                            cursor.execute(f"SELECT * FROM 'wait_push3' WHERE dynamicid = {dynamicid}")
                             data = cursor.fetchone()
                             cursor.close()
                             conn.commit()
