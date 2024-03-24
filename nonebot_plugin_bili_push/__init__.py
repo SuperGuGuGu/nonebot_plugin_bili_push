@@ -19,7 +19,7 @@ import toml
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 
-plugin_version = "1.1.21"
+plugin_version = "1.1.22"
 
 
 def connect_api(
@@ -3064,6 +3064,7 @@ async def run_bili_push():
                                     biliname = data[3]
                                     message_title = data[4]
                                     room_id = data[5]
+                                    room_image = data[6]
                                     message_url = f"live.bi{pilipala}li.com/{room_id}"
 
                                     # 0下播 1直播 2轮播
@@ -3093,8 +3094,12 @@ async def run_bili_push():
                                                 msg += cache_msg
                                                 cache_push_style = cache_push_style.removeprefix("[内容]")
                                             elif cache_push_style.startswith("[图片]"):
-                                                # 无图片，待前面增加代码记录图片内容
                                                 cache_push_style = cache_push_style.removeprefix("[图片]")
+                                                file = open(room_image, 'br')
+                                                io_file = io.BytesIO(file.read())
+                                                cache_msg = MessageSegment.image(io_file)
+                                                msg += cache_msg
+
                                             elif cache_push_style == "":
                                                 num = 0
                                             else:
