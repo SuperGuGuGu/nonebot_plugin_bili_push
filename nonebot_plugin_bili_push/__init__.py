@@ -19,7 +19,7 @@ import toml
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 
-plugin_version = "1.1.20"
+plugin_version = "1.1.21"
 
 
 def connect_api(
@@ -623,9 +623,9 @@ def get_draw(data, only_info: bool = False):
     :param only_info: 只绘制对应的up信息，用于关注的时候确认是否输错UID
     :return: {
         "code": 状态，如果是0则为出错，正常为2,
-        "draw_path": 绘制的动态存放路径,
-        "message_title": 动态的类型,
-        "message_url": 动态的UID,
+        "draw_path": 绘制的图片存放路径,
+        "message_title": 动态的标题,
+        "message_url": 动态的URL,
         "message_body": 动态的内容,
         "message_images": 动态包含的图片
         }
@@ -740,15 +740,15 @@ def get_draw(data, only_info: bool = False):
                     cache_fortsize = 36
 
                     if use_api is True:
-                        fontfile = get_file_path("farout2.ttf")
+                        cache_fontfile = get_file_path("farout2.ttf")
                     else:
-                        fontfile = get_file_path("NotoSansSC[wght].ttf")
-                    font = ImageFont.truetype(font=fontfile, size=fortsize)
+                        cache_fontfile = get_file_path("NotoSansSC[wght].ttf")
+                    cache_font = ImageFont.truetype(font=cache_fontfile, size=fortsize)
 
                     fan_number = str(fan_number)
                     while len(fan_number) < 6:
                         fan_number = "0" + fan_number
-                    draw.text(xy=(90, 25), text=fan_number, fill=fan_color, font=font)
+                    draw.text(xy=(90, 25), text=fan_number, fill=fan_color, font=cache_font)
                 else:
                     paste_image = image
                     image = Image.new("RGBA", (x + 50, y), (0, 0, 0, 0))
@@ -787,11 +787,23 @@ def get_draw(data, only_info: bool = False):
 
             # 添加大会员标志
             if vipStatus:
-                file_path = get_file_path("bili-vip-icon.png")
-                paste_image = Image.open(file_path)
-                paste_image = paste_image.resize((50, 50))
-                imageround = imageround.resize((50, 50))
-                image.paste(paste_image, (150, 150), mask=imageround)
+                if use_api is True:
+                    file_path = get_file_path("bili-vip-icon.png")
+                    paste_image = Image.open(file_path)
+                    paste_image = paste_image.resize((50, 50))
+                    imageround = imageround.resize((50, 50))
+                    image.paste(paste_image, (150, 150), mask=imageround)
+                else:
+                    paste_image = Image.new("RGB", (50, 50), (255, 104, 152))
+                    paste_image = circle_corner(paste_image, 25)
+                    draw_paste_image = ImageDraw.Draw(paste_image)
+
+                    fontfile = get_file_path("NotoSansSC[wght].ttf")
+                    font = ImageFont.truetype(font=fontfile, size=30)
+                    draw_paste_image.text(xy=(5, -10), text="大", fill="#FFFFFF", font=font)
+
+                    imageround = imageround.resize((50, 50))
+                    image.paste(paste_image, (150, 150), mask=imageround)
 
             # 添加动态卡片
             if "decorate_card" in list(data["desc"]["user_profile"]):
@@ -799,6 +811,10 @@ def get_draw(data, only_info: bool = False):
                 image.paste(paste_image, (580, 78), mask=paste_image)
 
             # 添加名字
+            if use_api is True:
+                fontfile = get_file_path("腾祥嘉丽中圆.ttf")
+            else:
+                fontfile = get_file_path("NotoSansSC[wght].ttf")
             cache_font = ImageFont.truetype(font=fontfile, size=35)
             if vipStatus:
                 fill = (255, 85, 140)
@@ -807,7 +823,7 @@ def get_draw(data, only_info: bool = False):
             draw.text(xy=(228, 90), text=biliname, fill=fill, font=cache_font)
 
             # 添加日期
-            draw.text(xy=(230, 145), text=timestamp, fill=(100, 100, 100), font=font)
+            draw.text(xy=(230, 145), text=timestamp, fill=(100, 100, 100), font=cache_font)
 
             return image
 
@@ -2487,6 +2503,12 @@ async def bili_push_command(bot: Bot, messageevent: MessageEvent):
         message = "Bili_Push：\n/添加订阅\n/删除订阅\n/查看订阅\n/最新动态"
 
     # 消息处理完毕，返回发送的消息
+    return_msg = {
+        "code": code,
+        "message": message,
+        "returnpath": returnpath
+    }
+    logger.debug(f"处理完成，返回消息{return_msg}")
     if code == 1:
         msg = MessageSegment.text(message)
         await get_new.finish(msg)
