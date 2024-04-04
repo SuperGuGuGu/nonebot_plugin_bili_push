@@ -22,6 +22,83 @@ from nonebot_plugin_apscheduler import scheduler
 plugin_version = "1.1.22"
 
 
+
+def plugin_config(config_name: str, groupcode: str):
+    """
+    读取群配置，如不存在则读取全局配置
+    config[groupcode][config_name] = config_data
+    :param config_name: 获取的配置名称
+    :param groupcode: 所在群号
+    :return: 配置内容
+    """
+    path = f"{basepath}db/bili_push/group_config.toml"
+
+    # 保存配置
+    def save_config():
+        with open(path, 'w', encoding="utf-8") as config_file:
+            toml.dump(config, config_file)
+
+    # 如不存在配置文件，则新建一个
+    if not os.path.exists(path):
+        config = {"Group_Config":
+                      {"nonebot_plugin_bili_push": "https://github.com/SuperGuGuGu/nonebot_plugin_bili_push"}
+                  }
+        save_config()
+        logger.debug("未存在群配置文件，正在创建")
+
+    # 读取配置
+    config = toml.load(path)
+
+    if groupcode in list(config):
+        if config_name in list(config[groupcode]):
+            group_config_data = config[groupcode][config_name]
+        else:
+            group_config_data = None
+    else:
+        group_config_data = None
+
+    if config_name == "admin":
+        if group_config_data is None:
+            config_data = adminqq
+        elif "gp" not in groupcode:
+            config_data = group_config_data
+            for qq in adminqq:
+                config_data.appeng(qq)
+        else:
+            config_data = adminqq
+
+    elif config_name == "bilipush_botswift":
+        config_data = group_config_data if group_config_data is not None else config_botswift
+
+    elif config_name == "group_command_starts":
+        config_data = group_config_data if group_config_data is not None else command_starts
+
+    elif config_name == "bilipush_push_style":
+        config_data = group_config_data if group_config_data is not None else push_style
+
+    elif config_name == "at_all":
+        config_data = group_config_data if group_config_data is not None else False
+
+    elif config_name == "ignore_live_list":
+        config_data = group_config_data if group_config_data is not None else []
+
+    elif config_name == "ignore_dynamic_list":
+        config_data = group_config_data if group_config_data is not None else []
+
+    elif config_name == "head":
+        h = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
+                           "Chrome/118.0.0.0 Safari/537.36 Edg/118.0.2088.76"}
+        config_data = group_config_data if group_config_data is not None else h
+
+    elif config_name == "none":
+        config_data = group_config_data if group_config_data is not None else None
+
+    else:
+        config_data = None
+
+    return config_data
+
+
 def connect_api(
         type: str,
         url: str,
@@ -224,79 +301,6 @@ if not os.path.exists(f"{basepath}db/bili_push/"):
 livedb = f"{basepath}db/bili_push/bili_push.db"
 heartdb = f"{basepath}db/bili_push/heart.db"
 
-
-def plugin_config(config_name: str, groupcode: str):
-    """
-    读取群配置，如不存在则读取全局配置
-    config[groupcode][config_name] = config_data
-    :param config_name: 获取的配置名称
-    :param groupcode: 所在群号
-    :return: 配置内容
-    """
-    path = f"{basepath}db/bili_push/group_config.toml"
-
-    # 保存配置
-    def save_config():
-        with open(path, 'w', encoding="utf-8") as config_file:
-            toml.dump(config, config_file)
-
-    # 如不存在配置文件，则新建一个
-    if not os.path.exists(path):
-        config = {"Group_Config":
-                      {"nonebot_plugin_bili_push": "https://github.com/SuperGuGuGu/nonebot_plugin_bili_push"}
-                  }
-        save_config()
-        logger.debug("未存在群配置文件，正在创建")
-
-    # 读取配置
-    config = toml.load(path)
-
-    if groupcode in list(config):
-        if config_name in list(config[groupcode]):
-            group_config_data = config[groupcode][config_name]
-        else:
-            group_config_data = None
-    else:
-        group_config_data = None
-
-    if config_name == "admin":
-        if group_config_data is None:
-            config_data = adminqq
-        elif "gp" not in groupcode:
-            config_data = group_config_data
-            for qq in adminqq:
-                config_data.appeng(qq)
-        else:
-            config_data = adminqq
-
-    elif config_name == "bilipush_botswift":
-        config_data = group_config_data if group_config_data is not None else config_botswift
-
-    elif config_name == "group_command_starts":
-        config_data = group_config_data if group_config_data is not None else command_starts
-
-    elif config_name == "bilipush_push_style":
-        config_data = group_config_data if group_config_data is not None else push_style
-
-    elif config_name == "at_all":
-        config_data = group_config_data if group_config_data is not None else False
-
-    elif config_name == "ignore_live_list":
-        config_data = group_config_data if group_config_data is not None else []
-
-    elif config_name == "ignore_dynamic_list":
-        config_data = group_config_data if group_config_data is not None else []
-
-    elif config_name == "none":
-        config_data = group_config_data if group_config_data is not None else None
-
-    elif config_name == "none":
-        config_data = group_config_data if group_config_data is not None else None
-
-    else:
-        config_data = None
-
-    return config_data
 
 
 def get_file_path(file_name):
@@ -768,18 +772,18 @@ def get_draw(data, only_info: bool = False):
             imageround = imageround.resize((129, 129))
             image.paste(imageround, (73, 73), mask=imageround)
             # 添加头像
-            if pendant == "":
-                image_face = connect_api("image", biliface)
-                image_face = image_face.resize((125, 125))
+            if biliface == "" and biliface != "None":
+                paste_image = connect_api("image", biliface)
+                paste_image = paste_image.resize((125, 125))
                 imageround = imageround.resize((125, 125))
-                image.paste(image_face, (75, 75), mask=imageround)
+                image.paste(paste_image, (75, 75), mask=imageround)
 
             # 添加装饰圈
-            if pendant != "":
-                image_face = connect_api("image", biliface)
-                image_face = image_face.resize((96, 96))
+            if pendant != "" and pendant != "None" and (biliface == "" and biliface != "None"):
+                paste_image = connect_api("image", biliface)
+                paste_image = paste_image.resize((96, 96))
                 imageround = imageround.resize((96, 96))
-                image.paste(image_face, (87, 91), mask=imageround)
+                image.paste(paste_image, (87, 91), mask=imageround)
 
                 paste_image = connect_api("image", pendant)
                 paste_image = paste_image.resize((175, 175))
