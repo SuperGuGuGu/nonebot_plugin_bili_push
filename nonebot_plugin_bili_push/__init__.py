@@ -19,8 +19,7 @@ import toml
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 
-plugin_version = "1.1.23.1"
-
+plugin_version = "1.1.24"
 
 
 def plugin_config(config_name: str, groupcode: str):
@@ -96,7 +95,7 @@ def plugin_config(config_name: str, groupcode: str):
     else:
         config_data = None
 
-    return config_data
+    return group_config_data if group_config_data is not None else config_data
 
 
 def connect_api(
@@ -107,11 +106,20 @@ def connect_api(
     logger.debug(f"connect_api请求URL：{url}")
     h = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
                        "Chrome/118.0.0.0 Safari/537.36 Edg/118.0.2088.76"}
+    cookies = None
+    if "ili.co" in url and apiurl not in url:
+        # 仅在部分网址会使用cookie，且禁止在kanon-api使用cookie
+        cookies = {
+            "SESSDATA": plugin_config("cookies_SESSDATA", "plugin"),
+            "bili_jct": plugin_config("cookies_bili_jct", "plugin"),
+        }
+        if cookies["SESSDATA"] is None or cookies["bili_jct"] is None:
+            cookies = None
     if type == "json":
         if post_json is None:
-            return json.loads(httpx.get(url, headers=h).text)
+            return json.loads(httpx.get(url, headers=h, cookies=cookies).text)
         else:
-            return json.loads(httpx.post(url, json=post_json, headers=h).text)
+            return json.loads(httpx.post(url, json=post_json, headers=h, cookies=cookies).text)
     elif type == "image":
         if url is None or url in ["none", "None", "", " "]:
             image = draw_text("获取图片出错", 50, 10)
@@ -300,7 +308,6 @@ if not os.path.exists(f"{basepath}db/bili_push/"):
     os.makedirs(f"{basepath}db/bili_push/")
 livedb = f"{basepath}db/bili_push/bili_push.db"
 heartdb = f"{basepath}db/bili_push/heart.db"
-
 
 
 def get_file_path(file_name):

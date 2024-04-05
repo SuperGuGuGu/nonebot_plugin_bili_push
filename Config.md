@@ -95,5 +95,11 @@ ignore_live_list=["2", "111111", "222222"]
 # 群内忽略动态推送列表
 # 配置后将忽略以下uid的动态推送
 ignore_dynamic_list=["2", "111111", "222222"]
+
+
+[plugin]
+cookies_SESSDATA="T123TEXT"
+cookies_bili_jct="T123TEXT"
+
 ```
 
