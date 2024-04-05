@@ -104,8 +104,7 @@ def connect_api(
         post_json=None,
         file_path: str = None):
     logger.debug(f"connect_api请求URL：{url}")
-    h = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
-                       "Chrome/118.0.0.0 Safari/537.36 Edg/118.0.2088.76"}
+    h = plugin_config("head", "plugin")
     cookies = None
     if "ili.co" in url and apiurl not in url:
         # 仅在部分网址会使用cookie，且禁止在kanon-api使用cookie
