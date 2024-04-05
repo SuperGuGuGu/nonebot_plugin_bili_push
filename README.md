@@ -60,21 +60,5 @@ COMMAND_START=["/"]
 
 详细配置方法- [详细配置](https://github.com/SuperGuGuGu/nonebot_plugin_bili_push/blob/master/Config.md)
 
-## To-Do
 
-🔵：
-
-*   [ ] ~~to-do~~
-
-🟢：
-
-*   [x] 保存直播推送封面，推送样式修改
-
-*   [x] 修复直播订阅
-
-*   [x] 配置推送样式
-
-*   [x] 设置默认字体。在禁用 插件 api 的时候使用默认字体
-
-*   [x] 单 nb 对接多 q 的兼容
 

@@ -68,6 +68,8 @@ bilipush_apiurl="http://cdn.kanon.ink"
 
 ## 群内配置项
 
+文件：group\_config.toml
+
 ```markup
 # 设置的群号
 # 注意：需要在群号前面添加字母g
